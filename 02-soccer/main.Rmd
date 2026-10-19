@@ -1,0 +1,283 @@
+---
+title: "ADS - Data Challenge 2: Which is the best team ever in Italian soccer?"
+author: "Omar Paviotti"
+date: "2026-10-19"
+output:
+  html_document:
+    css: styles.css
+---
+
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo"> [Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/soccerHistory/soccerHistory.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo"> [Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/02-soccer/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The website [Football-Data.co.uk](<https://football-data.co.uk/>) provides free historical football match results, statistics, and betting odds from numerous leagues and seasons.
+
+This makes it a useful resource for data science projects. In particular, our analysis will focus on all available matches from the Italian Serie A, covering the period from 1993 to the current year. The data for each season is available in CSV format.
+
+```{r, include=FALSE}
+library(readr)
+library(tidyr)
+library(dplyr)
+```
+
+## 1\. Scraping Strategy
+
+We begin by defining a detailed strategy to guide the implementation of a practical web scraping process using the website [Football-Data.co.uk](<https://football-data.co.uk/italym.php>).
+
+First, we note the availability of a [Notes](<https://football-data.co.uk/notes.txt>) file, which provides information about the dataset variables used for match results, match statistics, and betting odds, where available. For most seasons, datasets are available for both the first and second divisions. Since our analysis focuses exclusively on the first division, we only need to retrieve the corresponding Serie A datasets.
+
+The next step is to determine how to access all datasets systematically. By examining the URLs on the [Italian football data page](<https://football-data.co.uk/italym.php>) and comparing them with those on a similar page for Spanish football ([Spain](<https://football-data.co.uk/spainm.php>)), we can identify a consistent URL pattern:
+
+- `https://football-data.co.uk/`: the base URL.
+- `mmz4281`: a directory that remains constant across the datasets.
+- `xxyy`: the two-digit representations of the years in which the season begins and ends.
+- `cl.csv`: the country code (`c`), division level (`l`), and file extension.
+
+For example, the URL for the current Italian Serie A season (2026–2027) is [https://football-data.co.uk/mmz4281/2627/I1.csv](<https://football-data.co.uk/mmz4281/2627/I1.csv>).
+
+By examining the [Serie A 2026–2027 dataset](<https://football-data.co.uk/mmz4281/2627/I1.csv>) directly, we can also verify the information provided in the [Notes](<https://football-data.co.uk/notes.txt>) file and identify the main characteristics of the data:
+
+- The first row contains the column headers.
+- Values are separated by commas (`,`).
+- The dataset contains different data types, including character strings, dates, times, integers, and real numbers.
+- No obvious irregularities are apparent at this initial stage, and the dataset appears to be well-structured.
+
+**In summary**, the scraping process will need to:
+
+- Iterate through all available seasons, starting with the oldest and continuing up to the current season.
+- Import each CSV file while correctly identifying the columns and assigning appropriate data types, while accounting for potential exceptions and inconsistencies.
+- Select the columns relevant to the analysis and, optionally, filter out invalid or incomplete rows.
+
+## 2.\ AI-Assisted Scraping
+
+### 2.1 Prompt Engineering
+
+Based on the information gathered during the initial investigation, we can formulate a detailed prompt to generate R code capable of automating this repetitive process.
+
+<details class="markdown-card">
+  <summary>
+    <span class="card-info">
+      <span class="card-title">AI Scraping Prompt</span>
+      <span class="card-subtitle">Markdown document - prompt.Rmd</span>
+    </span>
+    <span class="card-action">
+      Click to read
+      <span class="card-chevron"></span>
+    </span>
+  </summary>
+
+  <div class="card-body">
+
+  ```{r, child="prompt.Rmd", echo=TRUE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+  ```
+
+  </div>
+</details>
+
+### 2.2 Code Generation
+
+When the prompt was submitted to the free, logged-out version of ChatGPT, which was reported to use the GPT-5.6 Luna model with an instant reasoning effort setting, the task was completed successfully in a single attempt.
+
+<details class="r-code-card">
+  <summary>
+    <span class="card-info">
+      <span class="card-title">AI Scraping Code</span>
+      <span class="card-subtitle">R source code - scraping.Rmd</span>
+    </span>
+    <span class="card-action">
+      Click to inspect
+      <span class="card-chevron"></span>
+    </span>
+  </summary>
+  <div class="card-body">
+  ```{r, child="scraping.Rmd", echo=TRUE, eval=TRUE, results='hide', message=FALSE, warning=FALSE}
+  ```
+  </div>
+</details>
+
+### 2.3 Solution Comments
+
+The generated code implements the requested scraping workflow through several key steps:
+
+- It dynamically generates the list of seasons, starting from the specified year and continuing up to the current year.
+- It defines a dedicated function to parse dates robustly and assign the appropriate data types.
+- It defines a function that scrapes data for a single season. This function:
+  - Initially imports the columns as character strings and subsequently converts them using the appropriate parsing functions.
+  - Produces messages and warnings to report errors, missing data, and skipped seasons.
+  - Adds a season identifier, applies the requested NA-filter, and returns the resulting tibble.
+- It applies the scraping function to the list of seasons and combines the results into a single tibble, preserving the requested order.
+- Finally, it outputs the resulting dataset, displays its structure using `glimpse()`, and reports the total number of rows, allowing the results to be checked.
+
+First, we examine the number of matches retrieved for each season:
+
+```{r}
+serie_a_matches |>
+  count(Season, name = "Matches") |>
+  print(n = Inf)
+```
+
+The match counts provide an initial consistency check:
+
+- **Seasons from the starting year through 2003–2004:** The league had 18 teams, resulting in 9 matches per round across 34 rounds, for a total of 306 matches per season.
+- **Seasons from 2004–2005 through the last completed season (2025–2026):** The league had 20 teams, resulting in 10 matches per round across 38 rounds, for a total of 380 matches per season.
+- **Current season (2026–2027):** The dataset contains matches played so far, as the season is still in progress.
+
+Next, we inspect the resulting dataset:
+
+```{r}
+glimpse(serie_a_matches)
+```
+The displayed structure and data types appear consistent with the requirements. This provides an initial indication that the scraping process has produced a dataset suitable for further analysis.
+
+## 3. Team Statistics
+
+Using the `dplyr` and `tidyr` packages, we can calculate a range of useful statistics for each team.
+
+We begin by assigning an outcome to each match. To do this, we define an auxiliary function that determines the result based on the number of goals scored by the home and away teams. We then apply this function separately to home and away matches.
+
+```{r}
+game_outcome <- function(GT1, GT2) {
+  ifelse(GT1 > GT2,"W",
+         ifelse(GT1 < GT2, "L", "D"))
+}
+
+serie_a_home_match_results <- serie_a_matches |>
+  # select(Date, HomeTeam, FTHG, FTAG) |>
+  mutate(Result = game_outcome(FTHG, FTAG)) |> 
+  select(Date, HomeTeam, Result) |>
+  rename(Team = HomeTeam)
+
+serie_a_away_match_results <- serie_a_matches |>
+  # select(Date, AwayTeam, FTHG, FTAG) |>
+  mutate(Result = game_outcome(FTAG, FTHG)) |> 
+  select(Date, AwayTeam, Result) |>
+  rename(Team = AwayTeam)
+```
+
+We can inspect the first few rows of both data frames to check the results.
+
+```{r, echo=FALSE}
+head(serie_a_home_match_results)
+head(serie_a_away_match_results)
+```
+
+Next, we combine the two data frames into a single data frame, preserving the original order of the matches as far as possible by arranging the results by date.
+
+```{r}
+serie_a_match_results <- bind_rows(
+  serie_a_home_match_results,
+  serie_a_away_match_results
+) |>
+  arrange(Date)
+```
+
+Now that we have information about the outcome of every match from the perspective of both teams, we can group the data by team and match result and count the number of wins, draws, and losses recorded by each team over the season. This allows us to build a league table based on the results in our dataset.
+
+We then use `pivot_wider()` to transform the data from long to wide format, creating separate columns for `Wins`, `Draws`, and `Losses`.
+
+```{r, warning=FALSE, message=FALSE}
+serie_a_match_results <- serie_a_match_results |>
+  group_by(Team, Result) |>
+  summarize(Count = n()) |>
+  pivot_wider(names_from = Result, values_from = Count) |>
+  rename(Wins = W, Draws = D, Losses = L)
+```
+
+```{r, echo=FALSE}
+head(serie_a_match_results)
+```
+
+Finally, we use these results to calculate some additional statistics for each team:
+
+- `Matches`: the total number of matches played, calculated as the sum of wins, draws, and losses.
+- `Points`: the total number of points earned, calculated using the standard formula of three points for a win and one point for a draw.
+- Points per match (`PPM`): the average number of points earned per match, calculated by dividing total points by total matches played.
+
+Note that during the 1993–1994 season, Serie A awarded two points for a win rather than three. For the purposes of this comparison, however, we use the current three-point system throughout, allowing us to compare teams consistently.
+
+We then sort the teams in descending order of total points and arrange the columns to make the final table easier to read.
+
+```{r}
+serie_a_match_results_extended <- serie_a_match_results |>
+  mutate(Matches = Wins + Draws + Losses) |>
+  mutate(Points = 3 * Wins + Draws) |>
+  mutate(PPM = round(Points / Matches, 2)) |>
+  arrange(desc(Points)) |>
+  select(Team, Matches, Wins, Draws, Losses, Points, PPM)
+```
+
+The final result is shown below.
+
+```{r}
+serie_a_match_results_extended
+```
+
+### Validation against an independent source
+
+As a quick consistency check, we can compare our results with the all-time Serie A table published on Wikipedia: [All-time table of Serie A since 1929](<https://it.wikipedia.org/wiki/Classifica_perpetua_della_Serie_A_dal_1929>).
+
+Sassuolo first played in Serie A in the 2013–2014 season. Since then, the club has participated in every season except 2024–2025. This gives us 12 complete Serie A seasons, plus the first six matchdays of the current season.
+
+According to Wikipedia's [all-time standings](<https://it.wikipedia.org/wiki/Classifica_perpetua_della_Serie_A_dal_1929#La_classifica>), Sassuolo's record before the current season was:
+
+- 563 points (571 after the first six matchdays of the current season)
+- 456 matches played (462 after the first six matchdays)
+- 147 wins (149 after the first six matchdays)
+- 122 draws (124 after the first six matchdays)
+- 187 losses (189 after the first six matchdays)
+- 1.24 points per match (PPM), approximately
+
+We can now compare these figures with the results obtained from our dataset by filtering the table for Sassuolo.
+
+```{r, echo=FALSE}
+serie_a_match_results_extended |> filter(Team == "Sassuolo")
+```
+
+The results are consistent with the independent source, providing a useful check that our calculations and data processing are working as expected.
+
+## 4. Research Questions (RQ)
+
+This dataset contains rich and comprehensive data spanning more than 30 seasons, with also many other columns beyond those used in the previous statistical analyses. This makes it possible to formulate three research questions driven by curiosity about historical trends and unexpected patterns, which can potentially be investigated using the available data.
+
+### RQ1 — The Impact of the Three-Point Rule on Match Outcomes
+
+***Premise***
+
+The rules governing Serie A have changed over the years, affecting both the number of participating teams and the points awarded for match outcomes ([Serie A — Format](<https://en.wikipedia.org/wiki/Serie_A#Format>)). Starting from the 1994–1995 season, the points awarded for a win increased from two to three, while draws continued to award one point and losses zero points ([La Repubblica, 3 May 1994](<https://web.archive.org/web/20251130195338/https://ricerca.repubblica.it/repubblica/archivio/repubblica/1994/05/03/basta-si-ai-punti.html>)).
+
+The reform aimed to make matches more entertaining by encouraging more offensive play and motivating teams to pursue victories rather than settle for draws.
+
+**Research question**
+
+> Although the dataset contains only the final season (1993-1994) in which the two-point system was used, was there a measurable increase in the mean number of victories per round in the following season? How did this figure evolve year by year over the subsequent seasons?
+
+### RQ2 — Home Advantage in Serie A: A Consistent Pattern?
+
+***Premise***
+
+Home advantage has been widely investigated in organized sports, from general studies such as *The Home Advantage* (Barry Schwartz et al., 1977; [DOI: 10.1093/sf/55.3.641](<https://doi.org/10.1093/sf/55.3.641>)) to more recent research focusing specifically on football and individual performance, such as *Home Advantage in Football: Exploring Its Effect on Individual Performance* (Eduardo Chacón-Fernández et al., 2025; [DOI: 10.3390/app15042242](<https://doi.org/10.3390/app15042242>)).
+
+However, home advantage may not be equally pronounced across all teams and seasons. A notable example is [Udinese's 2023–2024 season](<https://en.wikipedia.org/wiki/2023%E2%80%9324_Udinese_Calcio_season>), during which the team struggled to avoid relegation and performed particularly poorly at home, even compared with its away performances.
+
+**Research question**
+
+> Across the available Serie A seasons, is home advantage consistently observable on average? Does it occur in the majority of seasons, or are there notable outliers in which teams perform equally well or even better away from home, as in the case of Udinese in 2023–2024?
+
+### RQ3 — The Impact of COVID-19 on Home Advantage
+
+***Premise***
+
+The COVID-19 pandemic disrupted football worldwide, reflecting its broader impact on sporting competitions ([Impact of the COVID-19 Pandemic on Association Football](<https://en.wikipedia.org/wiki/Impact_of_the_COVID-19_pandemic_on_association_football>)). Following the initial suspension and postponement of matches, football competitions gradually resumed, often behind closed doors or with reduced stadium attendance.
+
+In Serie A, the pandemic affected the 2019–2020, 2020–2021, and 2021–2022 seasons to varying degrees. Stadium attendance subsequently returned to normal levels in the 2022–2023 season ([Lega Serie A](<https://www.legaseriea.it/serie-a/news/accadde-oggi-quando-il-calcio-riprese-dopo-la-pandemia>)).
+
+**Research question**
+
+> Assuming RQ2 confirms the existence of a general home advantage in Serie A, did this effect decrease or temporarily disappear during the COVID-19-affected seasons? Following the return to full stadium attendance, did home advantage immediately return to pre-pandemic levels, or was there a gradual adjustment over subsequent seasons?

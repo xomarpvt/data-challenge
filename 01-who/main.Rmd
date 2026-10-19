@@ -1,0 +1,156 @@
+---
+title: "ADS - Data Challenge 1: Tidy the WHO dataset"
+author: "Omar Paviotti"
+date: "2026-10-19"
+output: html_document
+---
+
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo"> [Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/who/who.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo"> [Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/01-who/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The `tidyr::who` dataset contains tuberculosis (TB) cases broken down by year, country, age group, gender, and diagnostic method. The data come from the [2014 World Health Organization Global Tuberculosis Report](<http://www.who.int/tb/country/data/download/en/>). Although this dataset contains a wealth of epidemiological information, its original structure makes it difficult to work with. This is a typical example of a real-world dataset. It contains redundant columns, inconsistent variable names, and many missing values. In short, the `who` dataset is messy and requires several steps to be transformed into a tidy format.
+
+## Tidying the Dataset
+
+```{r, include=FALSE}
+library(tidyr)
+library(stringr)
+library(dplyr)
+```
+
+### Step 0: overview
+
+We begin by taking a first look at the dataset:
+
+```{r, echo=FALSE}
+tidyr::who
+```
+
+### Step 1: gather
+
+The dataset contains many columns, ranging from `new_sp_m014` to `newrel_f65`, that represent observations rather than individual variables. To address this issue, we can use the `pivot_longer()` function to combine these columns into two variables: `key`, which stores the names of the original columns, and `cases`, which contains their corresponding values. Since the original dataset contains many missing values, we set `values_drop_na = TRUE` to remove them during this transformation.
+
+```{r echo=TRUE}
+who1 <- tidyr::who |>
+  pivot_longer(cols = starts_with("new"), names_to = "key", values_to = "cases", values_drop_na = TRUE)
+```
+
+```{r echo=FALSE}
+who1
+```
+
+### Step 2: replace
+
+The original column names follow an inconsistent naming convention. For example, some contain `newrel` instead of `new_rel`, as shown in the following subset of observations:
+
+```{r echo=FALSE}
+who1[671:680, ]
+```
+
+To make the variable names consistent, we can use the `str_replace()` function from the `stringr` package to insert an underscore before `rel` wherever necessary.
+
+```{r echo=TRUE}
+who2 <- who1 |>
+  mutate(key = str_replace(key, pattern = "rel", replacement = "_rel"))
+```
+
+```{r echo=FALSE}
+who2[671:680, ]
+```
+
+
+### Step 3: separate
+
+The `key` variable consists of several codes. The first three characters indicate whether the cases are new or old, while the following two or three characters identify the type of tuberculosis. The next character indicates the patient's sex, and the remaining characters specify the age group.
+
+We can extract these components by applying the `separate()` function in three successive steps.
+
+First, we split `key` at the underscore character, creating three new variables: `new`, `type`, and `sexage`.
+
+```{r echo=TRUE}
+who3 <- who2 |>
+  separate(col = key, into = c("new", "type", "sexage"), sep = "_")
+```
+
+```{r echo=FALSE}
+head(who3, n = 5)
+```
+
+Next, we split `sexage` into two variables, `sex` and `age`, using the first character as the separator position.
+
+```{r echo=TRUE}
+who4 <- who3 |>
+  separate(col = sexage, into = c("sex", "age"), sep = 1)
+```
+
+```{r echo=FALSE}
+head(who4, n = 5)
+```
+
+Finally, we split `age` into two variables, `age_low` and `age_high`, using the second character as the splitting position. Before doing so, we need to standardize the codes for the age groups at the extremes of the scale, namely `014` and `65`.
+
+```{r echo=TRUE}
+who5 <- who4 |>
+  mutate(age = str_replace(age, pattern = "014", replacement = "0014")) |>
+  mutate(age = str_replace(age, pattern = "65", replacement = "65100")) |>
+  separate(col = age, into = c("age_low", "age_high"), sep = 2)
+```
+
+```{r echo=FALSE}
+head(who5, n = 5)
+```
+
+
+### Step 4: drop
+
+Since all observations in this dataset refer to new TB cases, the `new` variable is constant throughout the dataset. We can verify this by counting the number of distinct values in the column:
+
+```{r echo=TRUE}
+who5 |>
+  select(new) |>
+  n_distinct()
+```
+
+As expected, there is only one distinct value. Therefore, we can remove this column, together with `iso2` and `iso3`, which provide redundant country identifiers alongside the country name.
+
+```{r echo=TRUE}
+who6 <- who5 |>
+  select(-iso2, -iso3, -new)
+```
+
+```{r echo=FALSE}
+who6
+```
+
+### Last step: use pipe
+
+The tidying process described above can be consolidated into a single pipeline by chaining together all the operations.
+
+```{r echo=TRUE}
+who7 <- tidyr::who |>
+  pivot_longer(cols = starts_with("new"), names_to = "key", values_to = "cases", values_drop_na = TRUE) |>
+  mutate(key = str_replace(key, pattern = "rel", replacement = "_rel")) |>
+  separate(col = key, into = c("new", "type", "sexage"), sep = "_") |>
+  separate(col = sexage, into = c("sex", "age"), sep = 1) |>
+  mutate(age = str_replace(age, pattern = "014", replacement = "0014")) |>
+  mutate(age = str_replace(age, pattern = "65", replacement = "65100")) |>
+  separate(col = age, into = c("age_low", "age_high"), sep = 2) |>
+  select(-iso2, -iso3, -new)
+```
+
+```{r echo=FALSE}
+who7
+```
+
+We can then compare the result with the dataset obtained through the previous, step-by-step approach to verify that the same transformations have been applied.
+
+```{r echo=TRUE}
+identical(who6, who7)
+```

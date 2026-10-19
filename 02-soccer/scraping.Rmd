@@ -1,0 +1,193 @@
+```{r}
+# =============================================================================
+# Italian Serie A historical match data scraper
+# Source: https://football-data.co.uk/
+#
+# Output: serie_a_matches
+# Columns: Season, Date, HomeTeam, AwayTeam, FTHG, FTAG
+# =============================================================================
+
+library(dplyr)
+library(tibble)
+library(readr)
+library(purrr)
+library(lubridate)
+
+# -----------------------------------------------------------------------------
+# 1. Generate season identifiers from 1993/94 through the current season
+# -----------------------------------------------------------------------------
+
+today <- Sys.Date()
+current_year <- lubridate::year(today)
+current_month <- lubridate::month(today)
+
+# Seasons start in the second half of the calendar year.
+# Before July, the current season began in the previous calendar year.
+season_start_year <- if (current_month >= 7L) {
+  current_year
+} else {
+  current_year - 1L
+}
+
+# Convert a starting year to the four-digit season identifier.
+# Example: 1993 -> "9394"
+make_season_id <- function(start_year) {
+  sprintf(
+    "%02d%02d",
+    start_year %% 100L,
+    (start_year + 1L) %% 100L
+  )
+}
+
+season_start_years <- seq.int(1993L, season_start_year)
+
+seasons <- vapply(
+  season_start_years,
+  make_season_id,
+  character(1)
+)
+
+# -----------------------------------------------------------------------------
+# 2. Parse source dates robustly
+# -----------------------------------------------------------------------------
+
+parse_match_dates <- function(x) {
+  x <- trimws(as.character(x))
+  x[x == ""] <- NA_character_
+  
+  # Source files may use dd/mm/yy, dd/mm/yyyy, or ISO yyyy-mm-dd.
+  # Explicit formats avoid locale-dependent date parsing.
+  parsed <- suppressWarnings(
+    lubridate::parse_date_time(
+      x,
+      orders = c("dmy", "ymd"),
+      quiet = TRUE,
+      truncated = 0
+    )
+  )
+  
+  as.Date(parsed)
+}
+
+# -----------------------------------------------------------------------------
+# 3. Download and process a single season
+# -----------------------------------------------------------------------------
+
+download_season <- function(season) {
+  
+  url <- sprintf(
+    "https://football-data.co.uk/mmz4281/%s/I1.csv",
+    season
+  )
+  
+  message("Downloading season ", season, ": ", url)
+  
+  # Read directly from the remote CSV. Explicit encoding accommodates
+  # accented team names in legacy source files.
+  raw_data <- tryCatch(
+    readr::read_csv(
+      file = url,
+      col_types = cols(.default = col_character()),
+      locale = locale(encoding = "Latin1"),
+      na = c("", "NA", "N/A"),
+      trim_ws = TRUE,
+      show_col_types = FALSE,
+      progress = FALSE,
+      name_repair = "minimal"
+    ),
+    error = function(e) {
+      message(
+        "Skipping season ", season, " (download/read error): ",
+        conditionMessage(e)
+      )
+      return(NULL)
+    }
+  )
+  
+  if (is.null(raw_data)) {
+    return(NULL)
+  }
+  
+  required_columns <- c(
+    "Date", "HomeTeam", "AwayTeam", "FTHG", "FTAG"
+  )
+  
+  missing_columns <- setdiff(required_columns, names(raw_data))
+  
+  if (length(missing_columns) > 0L) {
+    message(
+      "Skipping season ", season, "; missing columns: ",
+      paste(missing_columns, collapse = ", ")
+    )
+    return(NULL)
+  }
+  
+  processed <- raw_data %>%
+    select(all_of(required_columns)) %>%
+    mutate(
+      Date = parse_match_dates(Date),
+      HomeTeam = as.character(HomeTeam),
+      AwayTeam = as.character(AwayTeam),
+      FTHG = suppressWarnings(as.integer(FTHG)),
+      FTAG = suppressWarnings(as.integer(FTAG)),
+      Season = as.character(season)
+    ) %>%
+    filter(!is.na(Date)) %>%
+    select(Season, Date, HomeTeam, AwayTeam, FTHG, FTAG) %>%
+    arrange(Date)
+  
+  message(
+    "Season ", season, ": ",
+    nrow(processed), " matches with valid dates."
+  )
+  
+  as_tibble(processed)
+}
+
+# -----------------------------------------------------------------------------
+# 4. Retrieve all seasons and combine the results
+# -----------------------------------------------------------------------------
+
+season_data <- purrr::map(seasons, download_season)
+
+# map_dfr() safely combines successful results, ignoring NULL entries.
+serie_a_matches <- purrr::map_dfr(
+  season_data,
+  ~ if (is.null(.x)) NULL else .x
+) %>%
+  mutate(
+    Season = as.character(Season),
+    Date = as.Date(Date),
+    HomeTeam = as.character(HomeTeam),
+    AwayTeam = as.character(AwayTeam),
+    FTHG = as.integer(FTHG),
+    FTAG = as.integer(FTAG)
+  ) %>%
+  arrange(
+    match(Season, seasons),
+    Date
+  ) %>%
+  select(Season, Date, HomeTeam, AwayTeam, FTHG, FTAG) %>%
+  as_tibble()
+
+# -----------------------------------------------------------------------------
+# 5. Report the results
+# -----------------------------------------------------------------------------
+
+message(
+  "\nCompleted. Retrieved ",
+  nrow(serie_a_matches),
+  " matches across ",
+  dplyr::n_distinct(serie_a_matches$Season),
+  " seasons."
+)
+
+print(serie_a_matches)
+
+# Optional: inspect the structure and season coverage.
+glimpse(serie_a_matches)
+
+serie_a_matches %>%
+  count(Season, name = "Matches") %>%
+  print(n = Inf)
+```

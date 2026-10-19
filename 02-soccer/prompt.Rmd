@@ -1,0 +1,77 @@
+```{markdown}
+# Role
+
+Act as a senior R developer specializing in data science, web scraping, and data engineering. Write clean, robust, maintainable R code that follows best practices and respects all user requirements. Provide complete, self-contained, executable code with meaningful comments, appropriate error handling, and no unnecessary complexity.
+
+# Task
+
+Write a complete R script to scrape historical Italian Serie A football match data from [Football-Data.co.uk](<https://football-data.co.uk/>), combine the results across all available seasons, and return a single tibble containing the selected match statistics.
+
+## 1\. Data source and URL structure
+
+Base URL:
+
+`https://football-data.co.uk/mmz4281`
+
+The CSV files follow this URL pattern:
+
+`https://football-data.co.uk/mmz4281/{season}/I1.csv`
+
+Where:
+
+- `{season}` is a four-digit season identifier composed of the final two digits of the starting year followed by the final two digits of the ending year.
+- `I` identifies Italy.
+- `1` identifies the first division (Serie A).
+- `.csv` is the file extension.
+
+For example, the 1993–1994 season is available at:
+
+`https://football-data.co.uk/mmz4281/9394/I1.csv`
+
+## 2\. Season range
+
+Retrieve data for every season from 1993–1994 through the current season, inclusive, subject to data availability.
+
+- Determine the current season dynamically from the system date; do not hard-code the current year.
+- Football seasons span two calendar years. Assume the season starts in the second half of a calendar year and ends in the following calendar year.
+- Construct the season identifiers programmatically.
+- Process seasons in chronological order, starting with `9394` and ending with the current season.
+
+## 3\. Data extraction and transformation
+
+For each season:
+
+1. Download and read the corresponding CSV file directly from its URL.
+2. Retain only the following columns, in this exact order:
+   - `Date`
+   - `HomeTeam`
+   - `AwayTeam`
+   - `FTHG`
+   - `FTAG`
+3. Parse `Date` into a proper R `Date` object, handling the date formats used by the source files.
+4. Remove rows with missing or invalid dates.
+5. Add a column named `Season`, containing the corresponding four-digit season identifier (for example, `"9394"`).
+6. Ensure consistent column names and compatible data types across all seasons.
+
+## 4\. Combine the data
+
+- Append the processed data from each season into one consolidated tibble.
+- Preserve chronological ordering by season and, within each season, by match date.
+- Ensure the final result has exactly these columns, in this order:`Season`, `Date`, `HomeTeam`, `AwayTeam`, `FTHG`, `FTAG`
+- Return a single tibble containing all valid matches successfully retrieved from the source.
+
+## 5\. Code quality and implementation requirements
+
+- Use idiomatic R and established packages, preferably from the tidyverse where appropriate.
+- Use `tibble`/`dplyr` for data manipulation and a reliable method for reading remote CSV files.
+- Include all necessary library calls.
+- Avoid hard-coded season lists, manual URL entry, and unnecessary intermediate files.
+- Keep the implementation self-contained and runnable in a fresh R session once the required packages are installed.
+- Do not use placeholders, pseudocode, or omit implementation details.
+
+## 6\. Expected output
+
+Provide the complete R script that creates a final tibble named `serie_a_matches`.
+
+Briefly explain any important implementation choices.
+```

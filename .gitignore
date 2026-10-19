@@ -1,0 +1,6 @@
+*.RData
+*.Rhistory
+*.Rproj
+*.sh
+*.bat
+*.Rproj.user
