@@ -1,0 +1,79 @@
+---
+title: "ADS - Data Challenge 3: Interactive Gapminder"
+author: "Omar Paviotti"
+date: "2026-10-26"
+output:
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+---
+
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo"> [Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/shiny/gapminer/gapminer.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo">
+[Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/03-gapminder/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The Gapminder dataset can be explored through an interactive application, such as the one available at [https://exptime.shinyapps.io/gapminder/](<https://exptime.shinyapps.io/gapminder/>).
+
+The goal of this challenge is to reproduce the example application as accurately as possible using software reverse engineering. This involves studying the application's behavior and recreating its main features and visual elements.
+
+## Reverse Engineering
+
+The reverse engineering process consists of two main tasks:
+
+- Reproducing the application's inputs by selecting the appropriate widgets and displaying the correct options.
+- Connecting these inputs to the corresponding visualizations, reproducing their appearance and behavior as closely as possible.
+
+### Inputs
+
+The first input is a slider that allows users to select a year from the set of years available in the dataset.
+
+```{r, code=readLines("app.R")[72:79], eval=FALSE}
+```
+
+A drop-down menu allows users to select one of the five continents or display all continents together.
+
+```{r, code=readLines("app.R")[81:87], eval=FALSE}
+```
+
+Radio buttons allow users to select the variable displayed on the x-axis.
+
+```{r, code=readLines("app.R")[89:95], eval=FALSE}
+```
+
+A second set of radio buttons allows users to select the variable displayed on the y-axis.
+
+```{r, code=readLines("app.R")[97:103], eval=FALSE}
+```
+
+### Outputs
+
+The main output is a scatter plot. First, the dataset is filtered according to the selected year and, if a specific continent is selected, the chosen continent.
+
+The plot then uses the selected variables for the x-axis and y-axis. Depending on the variables, the corresponding scales can be either linear or logarithmic.
+
+Two additional visual properties remain fixed: point size represents population, while point color identifies each country.
+
+Finally, `geom_point()` displays the data points, labels are added to the axis, and a theme defines the overall appearance of the plot.
+
+```{r, code=readLines("app.R")[30:62], eval=FALSE}
+```
+
+### Reactivity
+
+The final step is to connect the inputs and outputs using Shiny's reactive system. The selected input values are passed to the server, which updates the visualization whenever the user changes a selection.
+
+```{r, code=readLines("app.R")[113:122], eval=FALSE}
+```
+
+## Deployment
+
+Once the Shiny application is ready, it can be published online and embedded in a webpage using an HTML `iframe`. For hosting, this project uses [shinyapps.io](<https://www.shinyapps.io/>).
+
+The final application is available here: [Interactive Gapminder](<https://01a16f60-3468-f08c-8b1e-12a15630a3f0.share.connect.posit.cloud/>).

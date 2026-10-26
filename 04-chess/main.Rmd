@@ -1,0 +1,414 @@
+---
+title: "ADS - Data Challenge 4: The Elo method in chess"
+author: "Omar Paviotti"
+date: "2026-10-26"
+output:
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+    css: styles.css
+---
+
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo"> [Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/chess/chess.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo">
+[Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/04-chess/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    error = FALSE,
+    warning = FALSE
+)
+
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+
+source("plot_1.R")
+source("plot_2.R")
+source("plot_3.R")
+```
+
+## Introduction
+
+The **Elo method** was developed by physics professor and chess player Arpad Elo. In 1970, the World Chess Federation adopted it as its official rating system.
+
+The method works as follows:
+
+- Let $r_i$ denote the **rating** of player $i$. A new, unrated player starts with $r_i = 0$.
+- Before a match between players $i$ and $j$, their **expected scores** are computed using the constant $\zeta$:
+  - $\mu_{i, j} = \frac{1}{1+10^{-(r_i-r_j)/\zeta}} = \frac{10^{r_i / \zeta}}{10^{r_i / \zeta} + 10^{r_j / \zeta}}$
+  - $\mu_{j, i} = 1 - \mu_{i, j}$
+- Once the match is over, the **actual score** is encoded as follows:
+  - $s_{i, j} = 1$ for $i$ wins, $s_{i, j} = 0.5$ for $i$ draw, $s_{i, j} = 0$ for $i$ loss
+  - $s_{j, i} = 1 - s_{i, j}$
+- After the match, the ratings are updated according to the expected and actual results, using the constant $\kappa$:
+  - $r_i \gets r_i + \kappa (s_{i, j} - \mu_{i, j})$
+  - $r_j \gets r_j + \kappa (s_{j, i} - \mu_{j, i})$
+
+The purpose of this rating system is to reward players who perform better than expected and penalise those who perform worse than expected.
+
+## Dataset
+
+To investigate relevant research questions concerning chess matches, an appropriate dataset is required. The provided dataset is the [Chess ratings - Elo versus the Rest of the World](<https://www.kaggle.com/c/chess/data>) dataset. It consists of a CSV file containing the outcomes of 65,053 distinct chess games.
+
+After downloading the dataset locally, the CSV file is imported using the appropriate delimiter and column types. Missing observations are then removed.
+
+```{r}
+chess_matches <- read_delim(
+  file = "data.csv",
+  delim = ",",
+  col_types = cols(
+    White = col_integer(),
+    Black = col_integer(),
+    Score = col_double()
+  )
+) |>
+    drop_na()
+```
+
+A preliminary inspection confirms that all 65,053 games have been successfully imported.
+
+```{r echo=FALSE}
+glimpse(chess_matches)
+```
+
+## Research Questions
+
+### 1. First-move advantage
+
+> RQ: Has the White an advantage over the Black, that is, is there a first-mover advantage?
+
+In chess, White always makes the first move, and this is commonly believed to provide a [first-move advantage](<https://en.wikipedia.org/wiki/First-move_advantage_in_chess>).
+
+The presence of such an advantage can be investigated by computing the average score obtained by White across all matches in the dataset.
+
+```{r include=FALSE, eval=FALSE}
+chess_matches |>
+  summarize(Score = mean(Score))
+```
+
+```{r}
+mean(chess_matches$Score)
+```
+
+The result appears to support the existence of a first-move advantage, as White achieves an average score above $0.5$.
+
+### 2. Players **Point Rating**
+
+> RQ: Write a function that computes the player point rating (1 point for wins, 0.5 points for draws, 0 points for defeats). How are point ratings distributed? Why?
+
+First, the point rating $p_i$ of player $i$ is defined as the average number of points obtained across all games played:
+
+${p}_i = \frac{1}{n_i} \sum_{j = 1}^{n_i} s_{i,j}$
+
+where $n_i$ is the total number of games played by player $i$, and $s_{i,j}$ is the score obtained in game $j$. Because an individual score can only take values between $0$ and $1$, this rating system satisfies $0 \leq p_i \leq 1$ for every player $i$.
+
+A function can therefore be defined to compute $p_i$ from a vector containing the results of a single player. Although the function is straightforward, defining it separately makes the implementation modular and allows the rating calculation to be modified without changing the remainder of the analysis.
+
+```{r}
+point_rating <- function(match_scores) {
+    mean(match_scores)
+}
+```
+
+To compute the point ratings for all players, each match must be represented from the perspective of both participants. The first representation records the score obtained by White, whereas the second records the corresponding score obtained by Black. The two representations are then combined into a single dataset.
+
+```{r}
+chess_matches_1 <- chess_matches |>
+    rename(P1 = White, P2 = Black)
+
+chess_matches_2 <- chess_matches |>
+    rename(P1 = Black, P2 = White) |>
+    mutate(Score = 1 - Score)
+
+chess_matches_both <- bind_rows(
+  chess_matches_1,
+  chess_matches_2
+)
+```
+
+The point rating is computed for each of the 7,301 players. The total number of matches played by each player is also retained, as it will be useful when interpreting the rating distribution.
+
+```{r}
+player_ratings <- chess_matches_both |>
+    rename(Player = P1) |>
+    group_by(Player) |>
+    summarise(Matches = n(), PointRating = mean(Score))
+```
+
+```{r echo=FALSE}
+player_ratings
+```
+
+The distribution of point ratings is visualised using a histogram and a density curve.
+
+```{r, echo=FALSE, dev="svg", out.width="100%"}
+dens_plot("PointRating", "Point")
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_1.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Distribution Plot Code</span>
+            <span class="card-subtitle">R source code - plot_1.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+    <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The distribution is concentrated around a point rating of $0.50$. This is expected because each game awards a total of one point across the two players. A decisive game awards one point to the winner and zero to the loser, whereas a draw awards half a point to each player. Several peaks can also be observed around values such as $0$, $1/4$, $1/3$, $2/3$, $3/4$, and $1$. These peaks are likely caused by players who have played only a small number of games. Since the point rating is an average, it is highly variable when based on few observations and becomes more stable as the number of games increases.
+
+To investigate this effect further, point ratings are plotted against the number of matches played, using a logarithmic scale for the latter.
+
+```{r, echo=FALSE, dev="svg", out.width="100%"}
+scat_plot("PointRating", "Point")
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_2.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Scatter Plot Code</span>
+            <span class="card-subtitle">R source code - plot_2.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The scatter plot confirms the interpretation of the distribution. Players with few matches may obtain ratings across the entire $[0,1]$ interval. As the number of matches increases, extreme ratings become less frequent and the values show some convergence towards the center of the interval.
+
+### 3. Zero-sum Elo property
+
+> RQ: An interesting property of Elo’s ratings is that the sum of all player ratings is always 0. Formally show this property.
+
+Consider two players, $i$ and $j$, whose Elo ratings before a game are $r_i$ and $r_j$. Their combined rating before the game is therefore $r_i+r_j$.
+
+Let $r_i'$ and $r_j'$ denote their ratings after the game. Using the Elo update rules, together with the identities
+
+$s_{i,j}+s_{j,i}=1$
+
+and
+
+$\mu_{i,j}+\mu_{j,i}=1$,
+
+we obtain:
+
+\(
+\begin{aligned}
+r_i'+r_j'   &= r_i + \kappa (s_{i, j} - \mu_{i, j}) + r_j + \kappa (s_{j, i} - \mu_{j, i}) \\
+            &= r_i + \kappa s_{i, j} - \kappa \mu_{i, j} + r_j + \kappa s_{j, i} - \kappa \mu_{j, i} \\
+            &= r_i + r_j + \kappa s_{i, j} + \kappa s_{j, i} - \kappa \mu_{i, j} - \kappa \mu_{j, i} \\
+            &= r_i + r_j + \kappa (s_{i, j} + s_{j, i}) - \kappa (\mu_{i, j} + \mu_{j, i}) \\
+            &= r_i + r_j + \kappa - \kappa \\
+            &= r_i + r_j \\
+\end{aligned}
+\)
+
+Therefore, after each game,
+
+$r_i'+r_j'=r_i+r_j$.
+
+This shows that a game only transfers rating points from one player to the other and does not change the total amount of rating in the system.
+
+Since every player begins with a rating of zero, the initial sum of ratings is zero. Because every update preserves this sum, the Elo procedure defines a zero-sum rating system. Thus, for $N$ players:
+
+$\sum_{i = 1}^{N} r_i = 0$
+
+### 4. Player **Elo Rating**
+
+> RQ: Write a function that computes the player Elo rating (set $\zeta=400$ and $\kappa=25$). Obserse its distribution: why is different from the point distribution? Verify the 0-sum property for Elo’s ratings.
+
+The computation begins by assigning an Elo rating of zero to every player. The matches must then be processed sequentially because the expected score of each player depends on the ratings obtained after all previous matches.
+
+For each match, the two players are identified and their current ratings are retrieved. Their expected scores are then computed and compared with the actual result. Finally, both ratings are updated according to the Elo formula.
+
+```{r}
+players <- player_ratings$Player
+
+white_idx <- match(chess_matches$White, players)
+black_idx <- match(chess_matches$Black, players)
+
+ratings <- numeric(length(players))
+
+scores <- chess_matches$Score
+
+for (m in seq_len(nrow(chess_matches))) {
+
+    i <- white_idx[m]
+    j <- black_idx[m]
+
+    ri <- ratings[i]
+    rj <- ratings[j]
+
+    expected <- 1 / (1 + 10^((rj - ri) / 400)) # zeta = 400
+
+    delta <- 25 * (scores[m] - expected) # kappa = 25
+
+    ratings[i] <- ri + delta
+    ratings[j] <- rj - delta
+}
+```
+
+The newly computed Elo ratings are added to the existing data frame with point ratings.
+
+```{r}
+player_ratings <- player_ratings |>
+    mutate(EloRating = ratings)
+```
+
+```{r echo=FALSE}
+player_ratings
+```
+
+First, the zero-sum property is verified numerically.
+
+```{r}
+sum(player_ratings$EloRating)
+```
+
+The sum of all Elo ratings is approximately zero, confirming the zero-sum property. The negligible deviation from exactly zero is caused by floating-point numerical error in R.
+
+The Elo-rating distribution can now be examined using the same type of visualisation previously used for point ratings.
+
+```{r, echo=FALSE, dev="svg", out.width="100%"}
+dens_plot("EloRating", "Elo")
+```
+
+The distribution is centred around zero, with most players having ratings between approximately $-50$ and $50$. However, it is asymmetric and has a longer right tail than left tail. A relatively small number of highly rated players is balanced by a larger number of players with moderately negative ratings. This produces a right-skewed distribution while preserving the zero-sum property. Unlike the point rating, the Elo rating also accounts for the strength of each player's opponents at the time when each match is played. Defeating a strong opponent therefore has a different effect from defeating a weak opponent.
+
+The relationship between Elo ratings and the number of matches played is then examined using a scatter plot.
+
+```{r, echo=FALSE, dev="svg", out.width="100%"}
+scat_plot("EloRating", "Elo")
+```
+
+Players with few matches generally remain relatively close to the initial rating of zero because they have undergone only a limited number of updates. As the number of matches increases, Elo ratings tend to become more dispersed. Elo can therefore distinguish and rank players more effectively as additional matches are observed. This differs from the point rating, which tends to become less dispersed as the number of matches increases.
+ 
+### 5. Correlation between Point and Elo ratings
+
+> RQ: Are point and Elo ratings correlated? Are top Elo players overlapping with top point players?
+
+The relationship between the two rating systems can first be investigated using two correlation coefficients.
+
+- Pearson's correlation coefficient measures the strength of the linear relationship between the two ratings.
+    ```{r}
+    cor(
+        player_ratings$PointRating,
+        player_ratings$EloRating,
+        method = "pearson"
+    )
+    ```
+    The resulting coefficient indicates a positive, moderate linear association. Players with higher point ratings therefore tend to have higher Elo ratings, although the relationship is far from perfectly linear.
+  
+- Spearman's correlation coefficient measures the strength of the monotonic relationship between the two variables. In this context, it is particularly useful because it evaluates whether the two rating systems produce similar player rankings.
+    ```{r}
+    cor(
+        player_ratings$PointRating,
+        player_ratings$EloRating,
+        method = "spearman"
+    )
+    ```
+    The resulting coefficient indicates a strong positive monotonic association. Therefore, the two rating systems produce broadly similar orderings of the players, even though their numerical relationship is not strictly linear.
+
+The relationship is also examined visually by plotting point ratings on the horizontal axis and Elo ratings on the vertical axis. The size of each observation represents the number of matches played by the corresponding player, while a LOESS curve highlights the overall pattern.
+
+```{r, echo=FALSE, dev="svg", out.width="100%"}
+corr_plot()
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_3.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Correlation Plot Code</span>
+            <span class="card-subtitle">R source code - plot_3.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The plot confirms the conclusions suggested by the correlation coefficients. It also shows the influence of players with few matches, whose point ratings are often particularly extreme.
+
+The highest-rated Elo players generally have point ratings above $0.5$. However, to assess the overlap between the two ranking systems more directly, the top 100 players according to each rating are compared.
+
+```{r}
+top_100_point <- player_ratings |>
+    arrange(desc(PointRating)) |>
+    slice_head(n = 100)
+
+top_100_elo <- player_ratings |>
+    arrange(desc(EloRating)) |>
+    slice_head(n = 100)
+
+top_100_point |>
+    inner_join(top_100_elo, by="Player") |>
+    nrow()
+```
+
+There is no overlap between the two top-100 lists. This result is explained by the presence of many players with very few matches at the top of the point-rating ranking. For instance, a player who wins their only recorded match receives a perfect point rating of $1$. By contrast, Elo ratings change gradually from the initial value of zero. Players generally need to perform consistently across several matches, particularly against strong opponents, to reach the highest positions in the Elo ranking.
+
+```{r, eval=FALSE, include=FALSE}
+max(top_100_point$EloRating)
+min(top_100_elo$EloRating)
+```
+
+### 6. Number of games effect
+
+> RQ: Test if the number of played games has an effect on the Elo and point player ratings
+
+The effect of the number of matches on the ratings has already been discussed in several parts of this analysis. In RQ2, the scatter plot showed that the Point rating is highly sensitive when few matches are played and usually converges towards $0.5$ as the number of matches grows. In RQ4, we saw that the Elo rating differentiates players more as the number of matches increases. Here we therefore limit ourselves to a correlation analysis, to quantify these relationships.
+
+We again use Spearman's rank correlation, as it captures monotonic relationships without requiring linearity. We compute it first for the point ratings and then for the Elo ratings.
+
+```{r}
+cor(
+    player_ratings$Matches,
+    player_ratings$PointRating,
+    method = "spearman"
+)
+
+cor(
+    player_ratings$Matches,
+    player_ratings$EloRating,
+    method = "spearman"
+)
+```
+
+Both numbers are positive but weak: players with more matches tend to have slightly higher ratings, yet the number of matches explains only a small part of the variation. This is consistent with the previous findings, since in both cases the main effect of the number of matches is on the dispersion and reliability of the ratings rather than on their average level. Therefore, the association should not be read as causal, as stronger players may simply play more matches.

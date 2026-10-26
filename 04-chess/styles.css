@@ -1,0 +1,296 @@
+
+/* ========================================
+   1. MARKDOWN FILE BOX
+   ======================================== */
+
+.markdown-card {
+  margin: 24px 0;
+  border: 1px solid #dce3ed;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(25, 45, 75, 0.07);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.markdown-card:hover {
+  border-color: #9bbce7;
+  box-shadow: 0 7px 22px rgba(25, 45, 75, 0.12);
+}
+
+.markdown-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+  background: linear-gradient(110deg, #f7faff 0%, #edf4ff 100%);
+  user-select: none;
+}
+
+.markdown-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.markdown-card > summary::before {
+  content: "MD";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #193b68;
+  color: #ffffff;
+  font-family: monospace;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.markdown-card .card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.markdown-card .card-title {
+  display: block;
+  color: #172b4d;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.markdown-card .card-subtitle {
+  display: block;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.markdown-card .card-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #315e9b;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.markdown-card .card-chevron {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+.markdown-card[open] .card-chevron {
+  transform: rotate(225deg) translateY(-2px);
+}
+
+.markdown-card[open] > summary {
+  border-bottom: 1px solid #e2e8f0;
+  background: #edf4ff;
+}
+
+.markdown-card .card-body {
+  padding: 20px;
+  background: #ffffff;
+}
+
+.markdown-card > summary:focus-visible {
+  outline: 3px solid #6ea8fe;
+  outline-offset: -3px;
+}
+
+
+/* ========================================
+   2. R SOURCE CODE BOX — LIGHT TEAL THEME
+   ======================================== */
+
+.r-code-card {
+  margin: 24px 0;
+  border: 1px solid #c8e2dc;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #ffffff;
+  box-shadow: 0 4px 14px rgba(31, 91, 78, 0.07);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.r-code-card:hover {
+  border-color: #83bdb0;
+  box-shadow: 0 7px 22px rgba(31, 91, 78, 0.12);
+}
+
+.r-code-card > summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+  background: linear-gradient(110deg, #f1faf7 0%, #e3f3ee 100%);
+  user-select: none;
+}
+
+.r-code-card > summary::-webkit-details-marker {
+  display: none;
+}
+
+.r-code-card > summary::before {
+  content: "R";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  background: #d0ebe2;
+  border: 1px solid #b4dbce;
+  color: #176653;
+  font-family: monospace;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.r-code-card .card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.r-code-card .card-title {
+  display: block;
+  color: #194d43;
+  font-size: 15px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+
+.r-code-card .card-subtitle {
+  display: block;
+  color: #64877f;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.r-code-card .card-action {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #237963;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.r-code-card .card-chevron {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(45deg) translateY(-2px);
+  transition: transform 0.2s ease;
+}
+
+.r-code-card[open] .card-chevron {
+  transform: rotate(225deg) translateY(-2px);
+}
+
+.r-code-card[open] > summary {
+  border-bottom: 1px solid #d5e9e2;
+  background: #e8f5f0;
+}
+
+.r-code-card .card-body {
+  padding: 18px;
+  background: #f7faf9;
+}
+
+.r-code-card pre {
+  margin: 0;
+  padding: 16px;
+  overflow-x: auto;
+  border: 1px solid #e0e9e6;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #344b45;
+}
+
+.r-code-card code {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono",
+               monospace;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.r-code-card > summary:focus-visible {
+  outline: 3px solid #83bdb0;
+  outline-offset: -3px;
+}
+
+
+/* ========================================
+   SHARED INTERACTION HINT
+   ======================================== */
+
+.markdown-card summary,
+.r-code-card summary {
+  position: relative;
+}
+
+.markdown-card summary:hover,
+.r-code-card summary:hover {
+  filter: brightness(0.97);
+}
+
+@media (max-width: 600px) {
+  .markdown-card > summary,
+  .r-code-card > summary {
+    padding: 14px;
+    gap: 10px;
+  }
+
+  .markdown-card .card-action,
+  .r-code-card .card-action {
+    font-size: 0;
+  }
+
+  .markdown-card .card-chevron,
+  .r-code-card .card-chevron {
+    font-size: initial;
+  }
+
+  .markdown-card .card-body,
+  .r-code-card .card-body {
+    padding: 12px;
+  }
+}
+
+
+/* Rimuove gli sfondi indesiderati dal codice */
+.r-code-card pre,
+.r-code-card pre code {
+  background: #ffffff !important;
+  background-color: #ffffff !important;
+  box-shadow: none;
+}
+
+/* Evita sfondi applicati ai singoli elementi evidenziati */
+.r-code-card code span,
+.r-code-card pre span {
+  background-color: transparent !important;
+}
+
+/* Mantiene il colore del testo */
+.r-code-card pre,
+.r-code-card code {
+  color: #344b45;
+}

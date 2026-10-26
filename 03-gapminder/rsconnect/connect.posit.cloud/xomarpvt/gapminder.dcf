@@ -1,0 +1,13 @@
+name: gapminder
+title: gapminder
+username: xomarpvt
+account: xomarpvt
+server: connect.posit.cloud
+hostUrl: https://api.connect.posit.cloud/v1
+appId: 01a16f60-3468-f08c-8b1e-12a15630a3f0
+bundleId:
+url: https://connect.posit.cloud/xomarpvt/content/01a16f60-3468-f08c-8b1e-12a15630a3f0
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|main.html|main.Rmd
