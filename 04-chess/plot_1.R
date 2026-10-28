@@ -2,9 +2,9 @@ dens_plot <- function(rating = "PointRating", x_lbl = "Point") {
     
     if (rating == "PointRating") {
         x_scale <- scale_x_continuous(
-            breaks = seq(0, 1, by = 0.1),
-            limits = c(0, 1),
-            expand = expansion(mult = c(0, 0.01))
+            breaks = seq(0, 175, by = 25),
+            limits = c(0, 175),
+            # expand = expansion(mult = c(0, 0.01))
         )
     } else {
         x_scale <- scale_x_continuous(
@@ -26,7 +26,7 @@ dens_plot <- function(rating = "PointRating", x_lbl = "Point") {
         ) +
         geom_density(
             linewidth = 1.2,
-            colour = "#E76F51",
+            colour = scales::alpha("#E76F51", 0.75),
             adjust = 1
         ) +
         x_scale +

@@ -100,17 +100,17 @@ The result appears to support the existence of a first-move advantage, as White 
 
 > RQ: Write a function that computes the player point rating (1 point for wins, 0.5 points for draws, 0 points for defeats). How are point ratings distributed? Why?
 
-First, the point rating $p_i$ of player $i$ is defined as the average number of points obtained across all games played:
+First, the point rating $p_i$ of player $i$ is defined as the total number of points obtained across all games played:
 
-${p}_i = \frac{1}{n_i} \sum_{j = 1}^{n_i} s_{i,j}$
+${p}_i = \sum_{j = 1}^{n_i} s_{i,j}$
 
-where $n_i$ is the total number of games played by player $i$, and $s_{i,j}$ is the score obtained in game $j$. Because an individual score can only take values between $0$ and $1$, this rating system satisfies $0 \leq p_i \leq 1$ for every player $i$.
+where $n_i$ is the total number of games played by player $i$, and $s_{i,j}$ is the score obtained in game $j$. Because an individual score can only take values between $0$ and $1$, this rating system satisfies $0 \leq p_i \leq n_i$ for every player $i$.
 
 A function can therefore be defined to compute $p_i$ from a vector containing the results of a single player. Although the function is straightforward, defining it separately makes the implementation modular and allows the rating calculation to be modified without changing the remainder of the analysis.
 
 ```{r}
 point_rating <- function(match_scores) {
-    mean(match_scores)
+    sum(match_scores)
 }
 ```
 
@@ -136,7 +136,7 @@ The point rating is computed for each of the 7,301 players. The total number of 
 player_ratings <- chess_matches_both |>
     rename(Player = P1) |>
     group_by(Player) |>
-    summarise(Matches = n(), PointRating = mean(Score))
+    summarise(Matches = n(), PointRating = point_rating(Score))
 ```
 
 ```{r echo=FALSE}
@@ -171,9 +171,11 @@ cat(
 )
 ```
 
+<!--
 The distribution is concentrated around a point rating of $0.50$. This is expected because each game awards a total of one point across the two players. A decisive game awards one point to the winner and zero to the loser, whereas a draw awards half a point to each player. Several peaks can also be observed around values such as $0$, $1/4$, $1/3$, $2/3$, $3/4$, and $1$. These peaks are likely caused by players who have played only a small number of games. Since the point rating is an average, it is highly variable when based on few observations and becomes more stable as the number of games increases.
+-->
 
-To investigate this effect further, point ratings are plotted against the number of matches played, using a logarithmic scale for the latter.
+The distribution of Player Point ratings is strongly right-skewed. There are many players with low ratings, while only a small number of players have high ratings, as confirmed by both the histogram and the density curve. However, since this rating depends particularly on the number of games played, we investigate whether this pattern is associated with differences in the number of matches played by each player by plotting Point ratings against the number of matches played.
 
 ```{r, echo=FALSE, dev="svg", out.width="100%"}
 scat_plot("PointRating", "Point")
@@ -201,7 +203,11 @@ cat(
 )
 ```
 
+<!--
 The scatter plot confirms the interpretation of the distribution. Players with few matches may obtain ratings across the entire $[0,1]$ interval. As the number of matches increases, extreme ratings become less frequent and the values show some convergence towards the center of the interval.
+-->
+
+The scatter plot confirms that the main factor influencing the Point rating is the number of games played, with what appears to be a linear correlation. This relationship will be investigated further in a later section. There are no apparent outliers from this pattern, apart from a small amount of natural variation. One clear limitation that emerged from this analysis is that the point rating system does not account for the strength of the opponents faced.
 
 ### 3. Zero-sum Elo property
 
@@ -249,37 +255,40 @@ The computation begins by assigning an Elo rating of zero to every player. The m
 For each match, the two players are identified and their current ratings are retrieved. Their expected scores are then computed and compared with the actual result. Finally, both ratings are updated according to the Elo formula.
 
 ```{r}
-players <- player_ratings$Player
-
-white_idx <- match(chess_matches$White, players)
-black_idx <- match(chess_matches$Black, players)
-
-ratings <- numeric(length(players))
-
-scores <- chess_matches$Score
-
-for (m in seq_len(nrow(chess_matches))) {
-
-    i <- white_idx[m]
-    j <- black_idx[m]
-
-    ri <- ratings[i]
-    rj <- ratings[j]
-
-    expected <- 1 / (1 + 10^((rj - ri) / 400)) # zeta = 400
-
-    delta <- 25 * (scores[m] - expected) # kappa = 25
-
-    ratings[i] <- ri + delta
-    ratings[j] <- rj - delta
+elo_ratings <- function(players, matches, zeta = 400, kappa = 25) {
+    
+    white_idx <- match(matches$White, players)
+    black_idx <- match(matches$Black, players)
+    
+    ratings <- numeric(length(players))
+    
+    scores <- matches$Score
+    
+    for (m in seq_len(nrow(matches))) {
+    
+        i <- white_idx[m]
+        j <- black_idx[m]
+    
+        ri <- ratings[i]
+        rj <- ratings[j]
+    
+        expected <- 1 / (1 + 10^((rj - ri) / zeta))
+    
+        delta <- kappa * (scores[m] - expected)
+    
+        ratings[i] <- ri + delta
+        ratings[j] <- rj - delta
+    }
+    
+    return (ratings)
 }
 ```
 
-The newly computed Elo ratings are added to the existing data frame with point ratings.
+The Elo ratings are then added to the existing data frame with point ratings.
 
 ```{r}
 player_ratings <- player_ratings |>
-    mutate(EloRating = ratings)
+    mutate(EloRating = elo_ratings(player_ratings$Player, chess_matches))
 ```
 
 ```{r echo=FALSE}
@@ -308,7 +317,7 @@ The relationship between Elo ratings and the number of matches played is then ex
 scat_plot("EloRating", "Elo")
 ```
 
-Players with few matches generally remain relatively close to the initial rating of zero because they have undergone only a limited number of updates. As the number of matches increases, Elo ratings tend to become more dispersed. Elo can therefore distinguish and rank players more effectively as additional matches are observed. This differs from the point rating, which tends to become less dispersed as the number of matches increases.
+Players with few matches generally remain relatively close to the initial rating of zero because they have undergone only a limited number of updates. As the number of matches increases, Elo ratings tend to become more dispersed. Elo can therefore distinguish and rank players more effectively as additional matches are observed. This differs from the Point rating, which tends to increase alongside the number of matches played.
  
 ### 5. Correlation between Point and Elo ratings
 
@@ -324,7 +333,7 @@ The relationship between the two rating systems can first be investigated using 
         method = "pearson"
     )
     ```
-    The resulting coefficient indicates a positive, moderate linear association. Players with higher point ratings therefore tend to have higher Elo ratings, although the relationship is far from perfectly linear.
+    The resulting coefficient indicates a relatively strong positive linear association. Players with higher Point ratings therefore tend to have higher Elo ratings, although the relationship is not perfectly linear.
   
 - Spearman's correlation coefficient measures the strength of the monotonic relationship between the two variables. In this context, it is particularly useful because it evaluates whether the two rating systems produce similar player rankings.
     ```{r}
@@ -334,9 +343,9 @@ The relationship between the two rating systems can first be investigated using 
         method = "spearman"
     )
     ```
-    The resulting coefficient indicates a strong positive monotonic association. Therefore, the two rating systems produce broadly similar orderings of the players, even though their numerical relationship is not strictly linear.
+    The resulting coefficient indicates a moderate positive monotonic association. Therefore, the two rating systems produce somewhat similar overall player rankings, but substantial differences between the two orderings remain.
 
-The relationship is also examined visually by plotting point ratings on the horizontal axis and Elo ratings on the vertical axis. The size of each observation represents the number of matches played by the corresponding player, while a LOESS curve highlights the overall pattern.
+The relationship is also examined visually by plotting point ratings on the horizontal axis and Elo ratings on the vertical axis. The size of each observation represents the number of matches played by the corresponding player, while a LOESS curve, together with a confidence interval, highlights the overall pattern.
 
 ```{r, echo=FALSE, dev="svg", out.width="100%"}
 corr_plot()
@@ -364,9 +373,13 @@ cat(
 )
 ```
 
+<!--
 The plot confirms the conclusions suggested by the correlation coefficients. It also shows the influence of players with few matches, whose point ratings are often particularly extreme.
+-->
 
-The highest-rated Elo players generally have point ratings above $0.5$. However, to assess the overlap between the two ranking systems more directly, the top 100 players according to each rating are compared.
+The plot supports the conclusions suggested by the correlation coefficients, revealing a positive but imperfect relationship between Point and Elo ratings. The observed variability can partly be explained by the fact that Elo ratings account for opponent strength, whereas Point ratings do not.
+
+The highest-rated Elo players ($ELO \geq 200$) generally have point ratings above $75$. However, to assess the overlap between the two ranking systems more directly, the top 100 players according to each rating are compared.
 
 ```{r}
 top_100_point <- player_ratings |>
@@ -382,6 +395,9 @@ top_100_point |>
     nrow()
 ```
 
+There is a substantial overlap between the two top-100 lists, with 53 players appearing in both rankings. This indicates that the two rating systems identify many of the same top-performing players, although considerable differences remain, mainly because of match count discrepancies.
+
+<!--
 There is no overlap between the two top-100 lists. This result is explained by the presence of many players with very few matches at the top of the point-rating ranking. For instance, a player who wins their only recorded match receives a perfect point rating of $1$. By contrast, Elo ratings change gradually from the initial value of zero. Players generally need to perform consistently across several matches, particularly against strong opponents, to reach the highest positions in the Elo ranking.
 
 ```{r, eval=FALSE, include=FALSE}
@@ -389,9 +405,41 @@ max(top_100_point$EloRating)
 min(top_100_elo$EloRating)
 ```
 
+-->
+
 ### 6. Number of games effect
 
-> RQ: Test if the number of played games has an effect on the Elo and point player ratings
+> RQ: Test if the number of played games has an effect on the Elo and point player ratings.
+
+The relationship between the number of matches played and the two ratings has already been discussed in previous sections. In RQ2, the scatter plot showed an approximately linear relationship between the number of matches played and the Point rating. In RQ4, we observed that Elo ratings tend to differentiate players more clearly as the number of matches increases. We therefore limit this section to a correlation analysis to quantify these relationships.
+
+For the Point rating, we use Pearson’s correlation coefficient because the relationship appears approximately linear.
+
+```{r}
+cor(
+    player_ratings$Matches,
+    player_ratings$PointRating,
+    method = "pearson"
+)
+```
+
+The resulting coefficient of $0.99$ indicates an almost perfect positive linear relationship between the number of matches played and the Point rating. This is consistent with the pattern observed in RQ2: players who have played more matches generally have proportionally higher Point ratings. Therefore, the number of matches played is a major factor in determining this rating.
+
+For the Elo rating, we instead use Spearman’s rank correlation, as it captures monotonic relationships without requiring linearity.
+
+```{r}
+cor(
+    player_ratings$Matches,
+    player_ratings$EloRating,
+    method = "spearman"
+)
+```
+
+The resulting coefficient of $0.179$ indicates a weak positive monotonic association. Thus, playing more matches is only weakly associated with obtaining a higher Elo rating. While players generally need to play several matches to reach the highest Elo positions, the number of matches alone does not guarantee a high rating, since Elo also depends on match outcomes and opponent strength. Moreover, stronger players may simply tend to play more matches.
+
+Overall, the results show that the Point rating is strongly related to the number of matches played, whereas the Elo rating is influenced much less by match frequency.
+
+<!--
 
 The effect of the number of matches on the ratings has already been discussed in several parts of this analysis. In RQ2, the scatter plot showed that the Point rating is highly sensitive when few matches are played and usually converges towards $0.5$ as the number of matches grows. In RQ4, we saw that the Elo rating differentiates players more as the number of matches increases. Here we therefore limit ourselves to a correlation analysis, to quantify these relationships.
 
@@ -412,3 +460,5 @@ cor(
 ```
 
 Both numbers are positive but weak: players with more matches tend to have slightly higher ratings, yet the number of matches explains only a small part of the variation. This is consistent with the previous findings, since in both cases the main effect of the number of matches is on the dispersion and reliability of the ratings rather than on their average level. Therefore, the association should not be read as causal, as stronger players may simply play more matches.
+
+-->

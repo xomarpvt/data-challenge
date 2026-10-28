@@ -2,10 +2,10 @@ scat_plot <- function(rating = "PointRating", y_lbl = "Point") {
     
     if (rating == "PointRating") {
         y_scale <- scale_y_continuous(
-            breaks = seq(0, 1, by = 0.25),
-            limits = c(0, 1)
+            breaks = seq(0, 175, by = 25),
+            limits = c(0, 175),
         )
-        cpt <- paste("Dashed line indicates a", tolower(y_lbl), "rating of 0.5")
+        cpt <- NULL # paste("Dashed line indicates a", tolower(y_lbl), "rating of 0.5")
     } else {
         y_scale <- scale_y_continuous(
             limits = c(-150, 350),
@@ -17,26 +17,32 @@ scat_plot <- function(rating = "PointRating", y_lbl = "Point") {
     
     return (
         ggplot(player_ratings, aes(x = Matches, y = .data[[rating]])) +
-        geom_hline(
-            yintercept = 0.5,
-            linetype = "dashed",
-            colour = "#E76F51",
-            linewidth = 0.8
-        ) +
+        (if (rating == "EloRating") {
+            geom_hline(
+                yintercept = 0,
+                linetype = "dashed",
+                colour = "#E76F51",
+                linewidth = 0.8
+            )
+        } else {NULL}) +
         geom_point(
             colour = "#2878B5",
             alpha = 0.25,
             size = 1.8
         ) +
-        scale_x_log10(
-            breaks = c(1, 10, 100, 1000),
-            labels = c("1", "10", "100", "1,000")
+        scale_x_continuous(
+            breaks = seq(0, 300, by = 50),
+            limits = c(0, 300),
         ) +
+        # scale_x_log10(
+        #     breaks = c(1, 10, 100, 1000),
+        #     labels = c("1", "10", "100", "1,000")
+        # ) +
         y_scale +
         labs(
             title = paste(y_lbl, "Rating vs. Match Experience"),
             subtitle = "How rating varies with the number of matches played",
-            x = "Matches played (log scale)",
+            x = "Matches played", # (log scale)",
             y = paste(y_lbl, "rating"),
             caption = cpt
         ) +
