@@ -1,0 +1,409 @@
+---
+title: "ADS - Data Challenge 5: Concentration of the S&P 500 index"
+# subtitle: "Subtitle"
+author: "Omar Paviotti"
+date: "2026-11-02"
+output:
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+    css: styles.css
+---
+
+<!-- Header -->
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo"> [Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/SP500/SP500.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo">
+[Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/05-spindex/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    error = FALSE,
+    warning = FALSE
+)
+
+library(tidyquant)
+library(tidyverse)
+library(ineq)
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(DT)
+library(patchwork)
+library(treemapify)
+library(wordcloud2)
+library(scales)
+
+source("plot_1.R")
+source("plot_2.R")
+source("plot_3.R")
+source("plot_4.R")
+
+theme_set(
+    theme_minimal(base_size = 12) +
+    theme(
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        axis.title = element_text(colour = "grey25"),
+        axis.text = element_text(colour = "grey35"),
+        axis.line = element_line(colour = "grey40")
+    )
+)
+```
+
+## Challenge
+
+In this data challenge, we investigate how concentrated the S&P 500 is among its constituent companies. The S&P 500 ([Standard & Poor’s 500](<https://www.spglobal.com/spdji/en/indices/equity/sp-500/#overview>)) is a stock market index that tracks the performance of 500 of the largest publicly traded companies in the United States and represents approximately 80% of the total value of the U.S. stock market. Since it is a market-capitalization-weighted index, larger companies have a substantially greater influence on its overall value and performance than smaller constituents. This makes it particularly relevant to examine how much of the index is concentrated among its largest companies.
+
+## Dataset
+ 
+To obtain the dataset, we use the R package `tidyquant`, which integrates quantitative finance tools with the tidyverse. The package can retrieve financial data from several sources and provides access to the constituent companies of major stock market indices, including the Dow Jones Industrial Average and the S&P 500.
+
+The constituents of the S&P 500 are retrieved using the `tq_index()` function. To avoid downloading the data every time the analysis is run, the dataset is saved locally as a CSV file. If the file already exists, it is loaded directly from the local directory.
+
+```{r}
+dir.create("data", showWarnings = FALSE)
+
+if (!file.exists("data/sp500.csv")) {
+  sp500 <- tq_index("SP500")
+  write_csv(sp500, "data/sp500.csv")
+}
+
+sp500 <- read_csv("data/sp500.csv", show_col_types = FALSE)
+```
+
+The following interactive table provides an initial overview of the dataset.
+
+```{r echo=FALSE}
+datatable(sp500, rownames = FALSE, filter="top", options = list(pageLength = 10, scrollX = TRUE))
+```
+
+### Tidying
+
+The dataset initially contains 505 rows, although the S&P 500 represents 500 companies. To understand this discrepancy, we first inspect two unusual observations identified by their symbols:
+
+```{r}
+sp500 |>
+  filter(symbol %in% c("-", "2602335D"))
+```
+
+A comparison with an independent [list](<https://www.slickcharts.com/sp500>) of S&P 500 constituents indicates that these symbols do not correspond to current components of the index. In particular, the identifier `-` represents the U.S. dollar rather than a company, while `2602335D` is associated with a company that is no longer included in the index since April 9, 2026, following the company’s [acquisition](<https://press.spglobal.com/2026-04-06-Caseys-General-Stores-Set-to-Join-S-P-500-DigitalOcean-Holdings-to-Join-S-P-MidCap-400-Broadstone-Net-Lease-to-Join-S-P-SmallCap-600>).
+
+We therefore remove these two observations:
+
+```{r}
+sp500 <- sp500 |>
+  filter(symbol %notin% c("-", "2602335D"))
+
+sp500 |>
+    nrow()
+```
+
+After their removal, the dataset contains 503 observations. However, this is actually consistent with the [composition](<https://en.wikipedia.org/wiki/List_of_S%26P_500_companies>) of the S&P 500: the index includes 503 common stocks issued by 500 companies because three companies are represented by two different share classes. These companies are *Alphabet*, *Fox Corporation*, and *News Corp*.
+
+The corresponding stock pairs can be verified directly in the dataset:
+
+```{r}
+sp500 |>
+  filter(symbol %in% c(
+    "GOOG", "GOOGL",
+    "FOX", "FOXA",
+    "NWS", "NWSA"
+  )) |>
+  select(symbol, company)
+```
+
+Therefore, the remaining difference between the number of observations and the number of companies is not a data error. Nevertheless, since our analysis focuses on concentration at the **company level**, the two share classes of each company should be combined. Their index weights are consequently added together, producing a new dataset with exactly one observation per company.
+
+```{r}
+wt_sp500 <- sp500 |>
+    select(symbol, company, weight) |>
+    mutate(
+        symbol = recode(symbol, GOOGL = "GOOG", FOXA = "FOX", NWSA = "NWS"),
+        company = recode(
+            symbol,
+            GOOG = "ALPHABET INC",
+            FOX  = "FOX CORP",
+            NWS  = "NEWS CORP",
+            .default = company
+        )
+    ) |>
+    summarise(weight = sum(weight), .by = c(symbol, company)) |>
+    mutate(weight = weight / sum(weight)) |>
+    arrange(desc(weight))
+```
+
+Finally, we verify that the resulting dataset contains 500 companies and that their weights sum to one, corresponding to $100\%$ of the index:
+
+```{r}
+wt_sp500 |>
+    nrow()
+
+wt_sp500 |>
+    select(weight) |>
+    sum()
+```
+
+## Research Questions
+
+We will now address the research questions in order. During the analysis some overlap between them is unavoidable, since they look at the same topic, the concentration of the index weights, from different points of view.
+
+### RQ1
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+How unequal are the company weights in the S&P 500?
+
+</div>
+
+To study the potential inequality, we start with some basic descriptive statistics: minimum, mean, standard deviation, maximum, first quartile, median and third quartile.
+
+```{r}
+stats <- wt_sp500 |>
+    summarise(
+        Min = min(weight),
+        Mean = mean(weight),
+        Standard_Deviation = sd(weight),
+        Max = max(weight),
+        Q1 = quantile(weight, 0.25),
+        Median = median(weight),
+        Q3 = quantile(weight, 0.75)
+    )
+```
+
+```{r echo=FALSE}
+stats
+```
+
+Finally, we compute the ratio between the mean and the median.
+
+```{r}
+stats$Mean / stats$Median
+```
+
+These first results already point to strong concentration. The largest weight is about 7.8%, while the smallest is almost negligible. The standard deviation ($0.65\%$) is more than three times the mean ($0.2\%$), which indicates a very high dispersion. The upper tail is also striking: the maximum is roughly 50 times the third quartile, whereas Q1 lies close to the minimum, so the distribution is compressed at the bottom and stretched at the top. Finally, the mean is about three times the median, which is a typical signature of a strongly right-skewed distribution.
+
+We therefore proceed with a visual representation, combining in a single plot the histogram of the weights with a box plot placed on top of it.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+hist_plot(wt_sp500)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_1.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Histogram Box Plot Code</span>
+            <span class="card-subtitle">R source code - plot_1.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The plot confirms what the summary statistics suggested. The vast majority of companies have weights between $0$ and $0.01$ ($1\%$), and the box plot makes the compression of the bulk of the distribution very clear. Beyond that range, about ten companies stand out as extreme outliers, clearly highlighted by the box plot.
+
+A histogram, however, only describes the shape of the distribution. To quantify the concentration of the weights, a more suitable tool is the Lorenz curve, which will be the subject of a subsequent question.
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+This first analysis shows that the index weights are strongly unequal: most companies have a weight below $1\%$, while about ten of them stand out as marked outliers relative to the rest of the distribution.
+
+</div>
+
+### RQ2
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+How much of the index is represented by its largest companies?
+
+</div>
+
+To answer this question, we use a treemap, a visualization that divides the available area into rectangles, each with an area proportional to its value. This type of [chart](<https://www.nngroup.com/articles/treemaps/>) is often used in finance, and it gives an immediate sense of how the total is split among its components.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+tree_map(wt_sp500)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_2.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Tree Map Code</span>
+            <span class="card-subtitle">R source code - plot_2.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+For readers who are not familiar with tickers and know companies only by name, a good alternative is a word cloud, with company names sized by weight. This requires normalizing the names of the index constituents, for example by removing redundant words such as "Inc.", "Corp." or "Class". This is a task that can be effectively delegated to AI, since it does not require high precision: the goal is simply to improve the result with little effort.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+word_cloud(wt_sp500)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_3.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Name Normalization and Word Cloud Code</span>
+            <span class="card-subtitle">R source code - plot_3.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The treemap shows the concentration through area: a few large tiles take up most of the space, while the remaining companies are barely distinguishable. The word cloud shows it through text: only a handful of names are legible, and the rest, about 450 of the 500 companies, fade into the background. Both visualizations reflect the same phenomenon, namely the concentration of the index weight in a small number of companies.
+
+The word cloud also makes it possible to identify the dominant sectors of the index. Technology comes first (Nvidia, Apple, Microsoft), followed by communication services (Alphabet, Meta) and consumer cyclical (Amazon, Tesla).
+
+Therefore, to measure how much of the index is held by the largest companies, we can limit the analysis to the top 5 and the top 25 ($1\%$ and $5\%$ of the 500 companies, respectively). By simply looking at the previous representations, we can expect these to account for roughly $25\%$ and $50\%$ of the total weight.
+
+```{r}
+wt_sp500 |>
+    arrange(desc(weight)) |>
+    summarise(
+        Top5_WT = sum(head(weight, 5)),
+        Top25_WT = sum(head(weight, 25))
+    )
+```
+
+The top 5 companies account for about $30\%$ of the index and the top 25 for $53\%$, so the results are in line with, and slightly above, our expectations.
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+The largest companies represent a very large share of the index. The top 5 companies ($1\%$ of the 500) account for about $30\%$ of the total weight, and the top 25 ($5\%$) for about $50\%$.
+
+</div>
+
+### RQ3
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+What does the Lorenz curve tell us about concentration?
+
+</div>
+
+After exploring the distribution through the histogram and the treemap, we have a good idea of what to expect from the standard tool for measuring concentration: the Lorenz curve. By condensing the earlier observations into a single representation, it should offer a clearer view of how unevenly the index weight is spread across its constituents. The [Lorenz curve](<https://en.wikipedia.org/wiki/Lorenz_curve>) is a graphical representation of the distribution of income or wealth. It was originally developed in 1905 to represent wealth inequality, but it is now applied in many other fields, such as ecology, economics and health.
+
+First, the `Lc` function of the `ineq` package is used to compute the Lorenz curve, and then we build the data frame needed for plotting.
+
+```{r}
+lorenz_curve <- Lc(wt_sp500$weight)
+
+lc_df <- data.frame(p = lorenz_curve$p, L = lorenz_curve$L)
+```
+
+We then plot the Lorenz curve together with the line of perfect equality, highlighting the area between the two.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+lorenz_plot(lc_df)
+```
+
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_4.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Lorenz Plot Code</span>
+            <span class="card-subtitle">R source code - plot_4.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The Lorenz curve confirms all our previous observations, with a large area separating it from the line of equality. The shares of the top $1\%$ and top $5\%$ seen before could be read directly from the curve, and other similar thresholds can be extrapolated visually. The area between the two curves is clearly more than half of the area under the line of equality, which suggests a high Gini coefficient.
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+The Lorenz curve shows a high concentration of weights in the S&P 500, confirming the evidence from the previous analysis and pointing to a high Gini coefficient.
+
+</div>
+
+### RQ4
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+What is the Gini coefficient of the S&P 500 weights?
+
+</div>
+
+The [Gini coefficient](https://en.wikipedia.org/wiki/Gini_coefficient) was born as an index to accompany the Lorenz curve. It summarizes the degree of inequality in a distribution of income or wealth, and is commonly used to measure how far a distribution deviates from perfect equality. It is defined as the ratio between the area separating the line of perfect equality from the observed Lorenz curve and the area between the line of perfect equality and the line of perfect inequality. The closer the value is to 0, the closer the distribution is to perfect equality; the closer it is to 1, the more unequal the distribution.
+
+Using the `Gini()` function of the `ineq` package, we can conclude this analysis by computing the coefficient.
+
+```{r}
+Gini(wt_sp500$weight)
+```
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+The Gini coefficient of the S&P 500 weights is about $0.71$, which indicates a high level of inequality. This is consistent with the whole analysis of RQ1, RQ2 and RQ3: a small number of companies carries most of the weight of the index, while the large majority contributes very little.
+
+</div>
+
+<!-- Footer -->
+<hr/>
+<p style="text-align: center;">A work by <a href="https://github.com/xomarpvt/">Omar Paviotti</a></p>
+<p style="text-align: center;"><span style="color: #808080;"><em>omar.paviotti@spes.uniud.it</em></span></p>
