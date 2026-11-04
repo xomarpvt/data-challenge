@@ -1,0 +1,377 @@
+---
+title: "ADS - Data Challenge 6: Stablecoins — compare USDC, USDT and DAI transaction sizes and volumes"
+# subtitle: "Subtitle"
+author: "Omar Paviotti"
+date: "2026-11-02"
+output:
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+    css: styles.css
+---
+
+<!-- Header -->
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo">
+[Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/stablecoins/stablecoins.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo">
+[Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/06-stablecoins/main.Rmd>)
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    error = FALSE,
+    warning = FALSE
+)
+
+library(tidyverse)
+library(httr2)
+library(ggplot2)
+
+source("plot_1.R")
+source("plot_2.R")
+
+theme_set(
+    theme_minimal(base_size = 12) +
+    theme(
+        panel.grid.minor = element_blank(),
+        plot.title = element_text(face = "bold", size = 14),
+        axis.title = element_text(colour = "grey25"),
+        axis.text = element_text(colour = "grey35"),
+        axis.line = element_line(colour = "grey40")
+    )
+)
+```
+
+## Challenge
+
+This data challenge focuses on the **transfer sizes** and **transfer volumes** of stablecoins on Ethereum. Stablecoins are cryptocurrencies that attempt to peg their market value to an external reference, typically the U.S. dollar. They achieve price stability through collateralization, that is, by being backed by fiat currencies or by other cryptocurrencies.
+
+To study stablecoin transfers, we turn to [Ethereum](https://ethereum.org/), whose public and timestamped transaction records offer a detailed view of activity within a real economic system. We access these records through [Etherscan](https://etherscan.io/), an Ethereum block explorer that indexes blockchain data and provides access to it through web APIs. 
+
+We are interested in ERC-20 token transfers associated with a given address and a single Ethereum transaction can generate multiple ERC-20 transfer events. Since this challenge focuses on individual transfer events, we will use the term transfer, rather than transaction, throughout.
+
+## Stablecoins
+
+We will compare three major Ethereum stablecoins, each identified by the address of its smart contract:
+
+- [**USDC**](https://www.usdc.com/), issued by Circle Internet Group;
+- [**USDT**](https://tether.to/en/), launched by Tether Limited in 2014;
+- [**DAI**](https://makerdao.com/it/), a decentralized stablecoin governed by the Maker protocol.
+
+Each one of them is identified by its *smart contract address*:
+
+```{r}
+usdc_sca <- "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+usdt_sca <- "0xdac17f958d2ee523a2206206994597c13d831ec7"
+dai_sca  <- "0x6b175474e89094c44da98b954eedeac495271d0f"
+```
+
+## Data Retrieval
+
+We will use Etherscan API V2, with base endpoint `https://api.etherscan.io/v2/api`. Ordinary transactions involving an Ethereum address are available through the `txlist` endpoint. Etherscan also provides an endpoint specifically for ERC-20 transfer events, `tokentx`, which is the one we are interested in.
+
+The data retrieval procedure is more complex than a simple API request because the available transfers are very numerous and the API imposes limits on the number of results returned. We therefore need to combine pagination with adjustments to the block range. After reviewing the [API documentation](https://docs.etherscan.io/api-reference/endpoint/tokentx) and inspecting the available data, we chose the following approach: define a fixed period of time and collect all transfers occurring within that period. An alternative would be to retrieve a fixed number of transfers for each token. However, because the three stablecoins have different levels of activity, this approach would cover substantially different time periods and make their transfer volumes difficult to compare. Nevertheless, it remains a valid alternative depending on the objective of the analysis.
+
+We then select a one-hour window on a Tuesday, at a high-activity time (European afternoon and US morning):
+
+```{r}
+window_start <- ymd_hms("2026-10-27 14:00:00", tz = "UTC")
+window_end   <- ymd_hms("2026-10-27 15:00:00", tz = "UTC")
+```
+
+Based on the methodology described above, the scraping code was developed with the assistance of AI, using the following set of instructions:
+
+- determine the start and end block numbers corresponding to the time window;
+- implement the retrieval of a single page, with retry logic and rate-limit handling;
+- implement the main function, which downloads the ERC-20 transfers of a token in a block range;
+  - paginate up to 10 pages of 1,000 rows, which is the Etherscan cap of 10,000 rows;
+  - when the cap is hit, restart from the last block seen, and so on until the whole range is covered;
+- run the retrieval for a stablecoin and save the raw data locally as RDS file.
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("etherscan.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Etherscan Transfer Scraping Code</span>
+            <span class="card-subtitle">R source code - etherscan.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The AI-generated code, after being reviewed, is executed to perform the scraping.
+
+```{r, echo=TRUE, results='hide'}
+source("etherscan.R")
+
+start_block <- get_block_number(window_start, "after")
+end_block   <- get_block_number(window_end, "before")
+
+dir.create("data", showWarnings = FALSE)
+
+if (! file.exists("data/usdc.rds")) {
+    usdc <- get_eth_transfers(usdc_sca, start_block, end_block)
+    write_rds(usdc, "data/usdc.rds")
+}
+
+if (! file.exists("data/usdt.rds")) {
+    usdt <- get_eth_transfers(usdt_sca, start_block, end_block)
+    write_rds(usdt, "data/usdt.rds")
+}
+
+if (! file.exists("data/dai.rds")) {
+    dai <- get_eth_transfers(dai_sca, start_block, end_block)
+    write_rds(dai, "data/dai.rds")
+}
+```
+
+<!-- message("Blocks: ", start_block, " -> ", end_block, " (", end_block - start_block + 1, " blocks)") -->
+
+Before starting the analysis, all data is loaded into a single dataset and some preliminary checks are performed to assess its overall consistency.
+
+```{r}
+transfers <- bind_rows(
+    USDC = read_rds("data/usdc.rds"),
+    USDT = read_rds("data/usdt.rds"),
+    DAI = read_rds("data/dai.rds"),
+  .id = "token"
+)
+
+transfers |>
+    summarise(
+        n_transfers = n(),
+        first_time = min(timeStamp),
+        last_time = max(timeStamp),
+        first_block = min(blockNumber),
+        last_block = max(blockNumber),
+        .by = token
+    )
+```
+
+Overall, the timestamps, block numbers, and transfer counts appear to be consistent.
+
+## Data Tidying
+
+The raw data frame stores every column as a character string (`<chr>`), so we need to convert them into usable R variables. We use `transmute()`, which lets us select and transform columns in a single step.
+
+We keep only the relevant variables:
+
+- `token`: the stablecoin (USDC, USDT or DAI);
+- `block`: the block number;
+- `time`: the timestamp, converted from UNIX seconds to a UTC date-time;
+- `hash`, `from`, `to`: the transaction hash and the two addresses involved;
+- `amount`: the transfer size in token units, computed as `value` divided by 10 raised to the token's decimals (6 for USDC and USDT, 18 for DAI);
+- `gas_used` and `gas_price_gwei`: the gas consumed and its price, converted from wei to gwei.
+
+```{r}
+transfers <- transfers |>
+    transmute(
+        token,
+        block = as.numeric(blockNumber),
+        time = as.POSIXct(
+            as.numeric(timeStamp),
+            origin = "1970-01-01",
+            tz = "UTC"
+        ),
+        hash,
+        from,
+        to,
+        amount = as.numeric(value) / 10^as.numeric(tokenDecimal),
+        gas_used = as.numeric(gasUsed),
+        gas_price_gwei = as.numeric(gasPrice) / 1e9
+    )
+```
+
+We can inspect the result in the first rows:
+
+```{r}
+transfers
+```
+
+We are now ready to start with the research questions.
+
+## Research Questions
+
+### RQ1
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+How do their transfer sizes differ?
+
+</div>
+
+Before describing transfer sizes, we remove [dust transfers](https://coinmarketcap.com/academy/glossary/dust-transactions) from the dataset: very small amounts, here below one cent (\$0.01), that have no economic meaning as payments and are often associated with spam or address poisoning. Keeping them would drag the lower end of every distribution toward zero and could partially hide the differences between the three stablecoins.
+
+We define the threshold once and use it throughout the analysis. The table shows, for each stablecoin, how many transfers are kept (`>= 0.01`) and how many are excluded (`< 0.01`).
+
+```{r}
+dust_threshold <- 0.01
+
+transfers |>
+    group_by(token) |>
+    summarise(
+        regular_transfers = sum(amount >= dust_threshold),
+        dust_transfers = sum(amount < dust_threshold)
+    )
+```
+
+Dust accounts for a minority of transfers for every token, from about 7% for DAI to about 15% for USDT. From now on we work only with the regular transfers.
+
+```{r}
+transfers <- transfers |>
+    filter(amount >= dust_threshold)
+```
+
+We start with descriptive statistics: since we are dealing with money, we expect right-skewed distributions, with a mean well above the median. For each stablecoin we compute the mean, the median, the 90th and 99th percentiles (the thresholds above which lie the top 10% and the top 1% of transfers) and the maximum.
+
+```{r}
+stats <- transfers |>
+    group_by(token) |>
+    summarise(
+        mean = mean(amount),
+        median = median(amount),
+        p90 = quantile(amount, 0.90),
+        p99 = quantile(amount, 0.99),
+        max = max(amount)
+    )
+```
+
+```{r echo=FALSE}
+stats
+```
+
+The three tokens share the same pattern: the mean is hundreds of times larger than the median (about 260 times for USDT, 300 for USDC and 900 for DAI) and it even exceeds the 90th percentile, so fewer than 10% of transfers are larger than the average. A small number of very large transfers drives the mean, while the median describes the typical transfer. DAI shows the strongest skewness, but its statistics rest on only 599 transfers and are therefore less stable.
+
+The tokens differ mostly in scale. DAI is larger than the others on every statistic except the maximum, however in the upper tail the gap narrows a bit. USDC and USDT are close to each other, with USDC roughly 1.5 to 2 times larger across the statistics. The largest single transfer belongs to USDC (about \$112 million), ahead of USDT (\$55 million) and DAI (\$50 million).
+
+We now look at the full distributions. The following plot combines a violin plot with a box plot, one group per token, with transfer size on a logarithmic y axis. The scale is needed because sizes span about ten orders of magnitude, from cents to over one hundred million dollars.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+violin_plot(transfers)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_1.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Violin and Box Plot Code</span>
+            <span class="card-subtitle">R source code - plot_1.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The plot confirms the statistics. The USDC and USDT distributions are unimodal and roughly bell-shaped on the log scale, with most of the mass at small amounts and a long upper tail. DAI looks different: its distribution has three modes, one around \$1,000 (close to the median) and two smaller ones around \$5 and \$500,000. Because DAI has far fewer transfers (599 against more than 23,000 for the others), the violin is based on little data, and the secondary modes may reflect a few recurring amounts rather than a stable pattern.
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+All three stablecoins have strongly right-skewed transfer sizes: most transfers are small, while a few large transactions drive the average. The distributions differ mainly in scale rather than shape, with DAI showing larger transfers at almost every quantile and USDC and USDT exhibiting similar patterns.
+
+</div>
+
+### RQ2
+
+<div class="research-question">
+
+<div class="box-title">Research Question</div>
+
+How much transfer volume does each stablecoin generate?
+
+</div>
+
+To answer this question we measure the volume of a stablecoin as the sum of the amounts of all its transfers in the observed hour. We continue from the filtered dataset, since the effect of dust transfers on the volume is negligible. For each token we report the number of transfers (as before) and the share of the total volume generated by the three stablecoins.
+
+```{r}
+volume <- transfers |>
+    group_by(token) |>
+    summarise(
+        n_transfers = n(),
+        volume = sum(amount),
+    ) |>
+    mutate(volume_share = volume / sum(volume))
+```
+
+```{r echo=FALSE}
+volume
+```
+
+Since we also have time data, we can see not only how much volume each stablecoin generates, but also how it accumulates. We therefore plot the cumulative volume over the hour. The final point of each line is the total volume of the token, while jumps correspond to very large transfers, as opposed to steady increases.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+line_plot(transfers)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_2.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Line Plot Code</span>
+            <span class="card-subtitle">R source code - plot_2.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+USDC generates the largest volume, about \$1.56 billion, more than half of the total (about 55%). USDT follows with about \$1.0 billion (35%), and DAI is far behind with about \$267 million (9%). The two tokens with the most transfers, USDC and USDT, are also the two with the largest volumes. However, volume does not follow the number of transfers exactly: USDT has slightly more transfers than USDC but a lower volume, because its transfers are smaller on average (see RQ1). DAI has about 40 times fewer transfers than the other two, so its volume would be much smaller if all transfers were equal, but its large transfers compensate and bring its volume within the same order of magnitude.
+
+The cumulative plot shows that volume is not generated evenly. As suggested by the right-skewed transfer sizes of RQ1, a few very large transfers account for a substantial part of each total, and they appear as steps in the curves. The volumes should therefore be read with caution: a different hour could change the ranking, especially between USDC and USDT, and the total of DAI depends on a handful of transfers.
+
+<div class="answer">
+
+<div class="box-title">Answer</div>
+
+In the observed hour, USDC generates the largest transfer volume (about \$1.56 billion), followed by USDT (about \$1.0 billion) and DAI (about \$267 million). We've also established that volume depends on both the number and the size of the transfers.
+
+</div>
+
+## Limitations
+
+It is important to conclude by making explicit the main limits of this analysis.
+
+- *Dust transfers.* Removing transfers below the arbitrary threshold of \$0.01 is a choice we made with limited domain expertise.
+- *Choice of the hour.* The hour was chosen by us (a weekday, at a time of high activity) and not at random, so the results may not be representative of a typical hour.
+- *Single hour.* The data cover only one hour, so we cannot say whether the differences between the stablecoins hold over time.
+- *Different numbers of transfers.* DAI has only 599 regular transfers, against more than 20,000 for USDC and USDT. Its statistics and its distribution shape rest on little data and are less stable, so comparisons with the other two should be taken with caution.
+
+<!-- Footer -->
+<hr/>
+<p style="text-align: center;">Created by <a href="https://github.com/xomarpvt/">Omar Paviotti</a></p>
+<p style="text-align: center;"><span style="color: #808080;"><em>omar.paviotti@spes.uniud.it</em></span></p>

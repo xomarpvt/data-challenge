@@ -200,7 +200,7 @@ cat(
 '<details class="r-code-card">
     <summary>
         <span class="card-info">
-            <span class="card-title">Histogram Box Plot Code</span>
+            <span class="card-title">Histogram and Box Plot Code</span>
             <span class="card-subtitle">R source code - plot_1.R</span>
         </span>
         <span class="card-action">
@@ -405,5 +405,5 @@ The Gini coefficient of the S&P 500 weights is about $0.71$, which indicates a h
 
 <!-- Footer -->
 <hr/>
-<p style="text-align: center;">A work by <a href="https://github.com/xomarpvt/">Omar Paviotti</a></p>
+<p style="text-align: center;">Created by <a href="https://github.com/xomarpvt/">Omar Paviotti</a></p>
 <p style="text-align: center;"><span style="color: #808080;"><em>omar.paviotti@spes.uniud.it</em></span></p>

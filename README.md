@@ -11,3 +11,4 @@ Choose one of the following challenges:
 3. **Interactive Gapminder** → [View Challenge 3](https://xomarpvt.github.io/data-challenge/03-gapminder/main.html)
 4. **The Elo method in chess** → [View Challenge 4](https://xomarpvt.github.io/data-challenge/04-chess/main.html)
 5. **Concentration of the S&P 500 index** → [View Challenge 5](https://xomarpvt.github.io/data-challenge/05-spindex/main.html)
+6. **Stablecoins — compare USDC, USDT and DAI transaction sizes and volumes** → [View Challenge 6](https://xomarpvt.github.io/data-challenge/06-stablecoins/main.html)
