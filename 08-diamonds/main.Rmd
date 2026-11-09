@@ -1,0 +1,320 @@
+---
+title: "ADS - Data Challenge 8: The qualities of diamonds"
+# subtitle: "Subtitle"
+author: "Omar Paviotti"
+date: "2026-11-09"
+output:
+  prettydoc::html_pretty:
+    theme: tactile
+    highlight: github
+    css: styles.css
+---
+
+<!-- Header -->
+<img src="https://staging.svgrepo.com/show/432982/assignment.svg" width="30" alt="Assignment logo">
+[Assignment](<https://users.dimi.uniud.it/~massimo.franceschet/ns/plugandplay/challenges/diamonds/diamonds.html>)
+
+<img src="https://www.r-project.org/logo/Rlogo.svg" width="30" alt="R logo">
+[Markdown](<https://github.com/xomarpvt/data-challenge/blob/main/08-diamonds/main.Rmd>)
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+    echo = TRUE,
+    error = FALSE,
+    warning = FALSE
+)
+
+library(readr)
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+
+theme_diamonds <- function(base_size = 14) {
+    theme_minimal(base_size = base_size) +
+    theme(
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_line(colour = "grey90"),
+        axis.title       = element_text(colour = "grey25"),
+        axis.text        = element_text(colour = "grey35"),
+        plot.title       = element_text(face = "bold"),
+        strip.text       = element_text(face = "bold")
+    )
+}
+theme_set(theme_diamonds())   # global theme, applied to every plot
+
+source("plot_1.R")
+source("plot_2.R")
+source("plot_3.R")
+```
+
+## Introduction
+
+The `ggplot2` package ships with the [`diamonds` dataset](https://ggplot2.tidyverse.org/reference/diamonds.html), which contains the prices and other attributes of 53,940 diamonds. The variables are:
+
+- `price`: price in US dollars ($\$326$–$\$18{,}823$)
+- `carat`: weight of the diamond ($0.2$–$5.01$)
+- `cut`: quality of the cut
+- `color`: diamond colour
+- `clarity`: a measure of how clear the diamond is
+- `x`, `y`, `z`: length, width and depth in mm
+- `depth`: total depth percentage, `2 * z / (x + y)` ($43$–$79$)
+- `table`: width of the top of the diamond relative to its widest point ($43$–$95$)
+
+Let's have a first look at the data.
+
+```{r}
+glimpse(ggplot2::diamonds)
+```
+
+For luxury goods such as watches, handbags or cars, we expect the price to depend on the brand and on distinctive quality features. For diamonds, the quality-related variables available in the data are:
+
+- `cut`, with classes `Fair`, `Good`, `Very Good`, `Premium`, `Ideal` (ordered from worst to best)
+- `color`, with letters from `D` to `J` (ordered from best to worst)
+- `clarity`, with classes `I1`, `SI2`, `SI1`, `VS2`, `VS1`, `VVS2`, `VVS1`, `IF` (ordered from worst to best)
+
+In this data challenge, we first show that, surprisingly, lower-quality diamonds tend to be *more* expensive. We then look for an explanation and solve this apparent paradox using models.
+
+## Data Challenge
+
+### Quality Score
+
+The three variables `cut`, `color` and `clarity` all describe the quality of a diamond, so we build a single overall quality score from them. Since we have no domain expertise, we use a simple and transparent approach.
+
+Each variable is mapped linearly onto $[0, 1]$, with its worst level at $0$ and its best level at $1$. The overall `quality` is the average of the three mapped values, so that each variable contributes equally. Therefore `quality` also lies in $[0, 1]$.
+
+
+```{r}
+cut_levels     <- c("Fair", "Good", "Very Good", "Premium", "Ideal")
+color_levels   <- c("J", "I", "H", "G", "F", "E", "D")  # ordered from worst (0) to best (1)
+clarity_levels <- c("I1", "SI2", "SI1", "VS2", "VS1", "VVS2", "VVS1", "IF")
+
+diamonds <- ggplot2::diamonds |>
+    mutate(
+        cut_quality     = (match(cut, cut_levels) - 1) / (length(cut_levels) - 1),
+        color_quality   = (match(color, color_levels) - 1) / (length(color_levels) - 1),
+        clarity_quality = (match(clarity, clarity_levels) - 1) / (length(clarity_levels) - 1),
+        quality         = (cut_quality + color_quality + clarity_quality) / 3
+    )
+```
+
+### Qualities vs Price
+
+We now check whether quality affects price. The figure below has three panels, one for each quality variable (`cut`, `color` and `clarity`). In each panel, the x axis shows the levels of the variable, ordered from worst (left) to best (right), and the y axis shows the price in US dollars on a logarithmic scale (the same scale will be used for all price plots, since the price is right-skewed). For each level, a box plot summarizes the distribution of the prices of the diamonds with that level and a red point marks the mean price.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+grouped_box_plot(diamonds)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_1.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Grouped Box Plot Code</span>
+            <span class="card-subtitle">R source code - plot_1.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+If quality increased the price, we would expect both the boxes and the red points to rise from left to right in each panel. Instead, we observe that the price tends to *decrease* as quality increases, the opposite of what we expected. The pattern is not perfectly regular, though. The distributions show few outliers, and medians and means are close to each other, which suggests that the price distributions are not strongly skewed on the log scale.
+
+We measure this association with the Spearman correlation, which we use throughout the analysis. It works on ranks, so it captures any monotonic relationship, and it is more robust than Pearson to skewed variables such as price.
+
+```{r}
+cor(diamonds$cut_quality, diamonds$price, method = "spearman")
+cor(diamonds$color_quality, diamonds$price, method = "spearman")
+cor(diamonds$clarity_quality, diamonds$price, method = "spearman")
+```
+
+All three correlations are negative (`r round(cor(diamonds$cut_quality, diamonds$price, method = "spearman"), 3)`, `r round(cor(diamonds$color_quality, diamonds$price, method = "spearman"), 3)` and `r round(cor(diamonds$clarity_quality, diamonds$price, method = "spearman"), 3)` respectively): weak, but with the opposite sign to what we would expect.
+
+Now we consider the overall `quality` score instead of the single variables, using a jittered scatter plot (it adds a bit of variance and is useful when there are many observations) with a log price axis.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+jitter_plot(
+    diamonds, quality, price,
+    xlab = "Quality score", ylab = "Price (USD, log scale)",
+    log_y = TRUE )
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_2.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Jittered Scatter Plot Code</span>
+            <span class="card-subtitle">R source code - plot_2.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+The plot is very dispersed, but we can notice three things:
+
+- most high-quality diamonds are in the low-price/mid-price zones (bottom-right);
+- most of the very expensive diamonds have medium quality (top-center);
+- the most interesting point: diamonds with the lowest quality (around $0$) are rarely cheap (the bottom-left corner is nearly empty), and some of them reach the highest prices. This is the *quality vs price paradox*.
+
+The overall correlation confirms it:
+
+
+```{r}
+cor(diamonds$quality, diamonds$price, method = "spearman")
+```
+
+It is again weak and negative: `r round(cor(diamonds$quality, diamonds$price, method = "spearman"), 3)`.
+
+### Carats
+
+Like gold, diamonds are a precious material, so we suspect that weight plays a role in determining value. Diamond weight is measured in carats, where one carat is one-fifth of a gram.
+
+We therefore hypothesize that `carat` is a *confounding variable*: if it is related both to quality and to price, it could explain the paradox. We test the two links separately.
+
+First, quality vs carats (carats on a log scale).
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+jitter_plot(
+    diamonds,
+    quality, carat,
+    xlab = "Quality score", ylab = "Carat (log scale)",
+    log_y = TRUE )
+```
+
+
+The plot shows that high-quality diamonds are all small, while large diamonds have lower quality. A plausible reason is that larger stones are more likely to have visible imperfections, but confirming this would require a gemologist. The correlation agrees:
+
+```{r}
+cor(diamonds$quality, diamonds$carat, method = "spearman")
+```
+
+It is moderately negative (`r round(cor(diamonds$quality, diamonds$carat, method = "spearman"), 3)`).
+
+Second, carats vs price, again with log-log scales.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+jitter_plot(
+    diamonds,
+    carat, price,
+    xlab = "Carat (log scale)", ylab = "Price (USD, log scale)",
+    log_x = TRUE, log_y = TRUE, height = 0)
+```
+
+This is the clearest relationship so far, close to linear on the log-log scale, and the correlation is very high:
+
+```{r}
+cor(diamonds$carat, diamonds$price, method = "spearman")
+```
+
+The value of `r round(cor(diamonds$carat, diamonds$price, method = "spearman"), 3)` confirms a very strong positive association between carats and price.
+
+To summarize our findings so far: price is strongly driven by carats, while bigger diamonds tend to have lower quality. High quality is found mostly in smaller stones, which are cheaper simply because they weigh less. This suggests that the paradox is a *confounding effect*: carats influence both quality and price, making quality look negatively related to price. In the next section we use models to verify this hypothesis.
+
+### Models
+
+To test the confounding hypothesis we fit two linear models on the logarithm of the price. The first model uses only the quality variables and excludes carats:
+
+$$\log(\text{price}) = \beta_0 + f_{cut}(\text{cut}) + f_{color}(\text{color}) + f_{clarity}(\text{clarity}) + \varepsilon$$
+
+Since `cut`, `color` and `clarity` are ordered factors, R encodes each of them with polynomial contrasts: `.L` is the linear trend across the levels, `.Q` the quadratic one, and so on. We focus on the linear trend `.L`, which summarizes the overall direction of the effect.
+
+```{r}
+model_wout_carat <- lm(
+    log(price) ~
+        cut +
+        color +
+        clarity,
+    data = diamonds
+    )
+summary(model_wout_carat)
+```
+
+With over 54,000 observations almost everything is statistically significant, so p-values are not informative here. What matters is the fit: the adjusted $R^2$ is only `r round(summary(model_wout_carat)$adj.r.squared, 3)`, so quality alone explains less than 9% of the variability of the log-price. We now read the linear trend (`.L`) of each variable: those of `cut` (`r round(coef(model_wout_carat)["cut.L"], 2)`) and `clarity` (`r round(coef(model_wout_carat)["clarity.L"], 2)`) are negative, i.e. better levels are associated with lower prices. For `color`, ordered from best (`D`) to worst (`J`), the trend is positive (`r round(coef(model_wout_carat)["color.L"], 2)`), meaning that worse colors are more expensive. All three go against our expectation: this is again the *quality vs price paradox*.
+
+The second model adds the carats, also on a log scale:
+
+$$\log(\text{price}) = \beta_0 + \beta_1 \log(\text{carat}) + f_{cut}(\text{cut}) + f_{color}(\text{color}) + f_{clarity}(\text{clarity}) + \varepsilon$$
+
+```{r}
+model_with_carat <- lm(
+    log(price) ~
+        log(carat) +
+        cut +
+        color +
+        clarity,
+    data = diamonds
+    )
+summary(model_with_carat)
+```
+
+Once carats are accounted for, the picture changes completely:
+
+- the adjusted $R^2$ jumps to `r round(summary(model_with_carat)$adj.r.squared, 3)`: weight alone explains most of the price;
+- the coefficient of `log(carat)` is `r round(coef(model_with_carat)["log(carat)"], 2)`, i.e. a 1% increase in weight is associated with an increase of about `r round(coef(model_with_carat)["log(carat)"], 1)`% in price;
+- the linear trends of quality are now all in the expected direction: `cut.L` is `r round(coef(model_with_carat)["cut.L"], 2)`, `clarity.L` is `r round(coef(model_with_carat)["clarity.L"], 2)` and `color.L` is `r round(coef(model_with_carat)["color.L"], 2)` (negative, which for `color` means that better colors are more expensive). Clarity and colour have the largest effects, while cut has a smaller one.
+
+So, at equal carats, higher quality is associated with a higher price: the sign of the quality effect reverses once we control for weight, which is exactly what we expect from a confounding variable.
+
+We can also see this without models: we split the diamonds into five carat bins of equal size and plot price against quality within each bin, with a linear fit (on the log scale) in red.
+
+```{r, echo=FALSE, dev='svglite', fig.ext='svg', out.width="100%"}
+grouped_jitter_plot(diamonds)
+```
+
+```{r, echo=FALSE, results='asis'}
+code <- paste(readLines("plot_3.R"), collapse = "\n")
+
+cat(
+'<details class="r-code-card">
+    <summary>
+        <span class="card-info">
+            <span class="card-title">Grouped Jitter Plot Code</span>
+            <span class="card-subtitle">R source code - plot_3.R</span>
+        </span>
+        <span class="card-action">
+            Click to inspect
+            <span class="card-chevron"></span>
+        </span>
+    </summary>
+  <div class="card-body">
+````r\n', code, '\n````
+</details>\n',
+  sep = ""
+)
+```
+
+Within each carat bin the fitted line is increasing: among diamonds of similar weight, higher quality means higher price. The paradox appeared only because we compared diamonds of very different sizes, and size dominates the price.
+
+### Conclusions and Limitations
+
+During this challenge, as instructed, we provided a quality association that helped us identify and confirm the price paradox of diamonds, and then to propose and verify the reason behind it. Carats are a confounder: price is driven mainly by weight, while heavier diamonds tend to have lower quality.
+
+This analysis followed a purely data science approach, without any domain-specific input, expert opinion or consultation. In particular, the industry standard is that of the so-called [*4Cs*](https://4cs.gia.edu/wp-content/uploads/2013/02/GIA_4Cs_Download.pdf) (Cut, Color, Clarity, Carat weight), in which carat weight is one of four recognized value factors, so all four should be taken into account.
+
+This leads us to highlight some limitations of the work. First, we only showed associations, not causes, with hypotheses such as larger stones having lower quality. However, the most important limitation is the quality score: the linear mapping of levels onto $[0, 1]$ and the equal weights are arbitrary (the levels are ordinal and not necessarily equally spaced). Finally, we made model assumptions and left unused other variables in the dataset, such as the dimensions.
+
+<!-- Footer -->
+<hr/>
+<p style="text-align: center;">Created by <a href="https://github.com/xomarpvt/">Omar Paviotti</a></p>
+<p style="text-align: center;"><span style="color: #808080;"><em>omar.paviotti@spes.uniud.it</em></span></p>
